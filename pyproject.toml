@@ -1,0 +1,29 @@
+[project]
+name = "rubik-helper"
+version = "0.1.0"
+description = "Solveur et guide pas à pas pour cubes NxN et puzzles de la famille Megaminx"
+authors = [
+    { name = "Emmanuelle.GOUGELET", email = "emmanuelle.gougelet@eoris.fr" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "kociemba>=1.2.1",
+    "numpy>=2.5.4",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+rubik-helper = "rubik_helper:main"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+markers = ["slow: puzzles de grande taille (bibliothèque longue à préparer la première fois)"]

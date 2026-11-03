@@ -1,0 +1,130 @@
+ <!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rubik Helper</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="importmap">
+    { "imports": { "three": "/static/vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Rubik Helper</h1>
+    <label class="puzzle-select">
+      <span>Puzzle</span>
+      <select id="puzzle"></select>
+    </label>
+    <span id="status" class="status"></span>
+  </header>
+
+  <main class="layout">
+    <!-- Saisie -->
+    <section class="panel input-panel">
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="paint" role="tab">Peindre</button>
+        <button class="tab" data-tab="camera" role="tab">Caméra</button>
+        <button class="tab" data-tab="formula" role="tab">Formule</button>
+      </nav>
+
+      <div class="tab-body" id="tab-paint">
+        <p class="hint">Choisissez une couleur puis cliquez sur les facettes, dans le patron ou sur la vue 3D.
+          Maj + clic remplit toute la face.</p>
+        <div id="palette" class="palette"></div>
+        <div class="row">
+          <button id="btn-solved" class="secondary">État résolu</button>
+          <button id="btn-clear" class="secondary">Tout effacer</button>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" id="tab-camera">
+        <p class="hint" id="cam-hint">Présentez une face à la caméra en suivant le gabarit, puis capturez.</p>
+        <label class="field">
+          <span>Face à scanner</span>
+          <select id="cam-face"></select>
+        </label>
+        <div class="cam-wrap">
+          <video id="cam-video" playsinline muted></video>
+          <canvas id="cam-overlay"></canvas>
+        </div>
+        <div class="row">
+          <button id="cam-start" class="secondary">Activer la caméra</button>
+          <button id="cam-capture" disabled>Capturer</button>
+          <button id="cam-accept" class="secondary" disabled>Valider la face</button>
+        </div>
+        <p class="hint small">Après capture, corrigez les erreurs éventuelles en peignant sur le patron avant de valider.
+          La lecture s'améliore au fil des faces validées.</p>
+      </div>
+
+      <div class="tab-body hidden" id="tab-formula">
+        <label class="field">
+          <span>Formule de mélange</span>
+          <textarea id="formula" rows="5" spellcheck="false" placeholder="R U R' U' ..."></textarea>
+        </label>
+        <div class="row">
+          <button id="btn-apply-solved">Appliquer au cube résolu</button>
+          <button id="btn-apply-current" class="secondary">Appliquer à l'état actuel</button>
+        </div>
+        <div class="row">
+          <button id="btn-random" class="secondary">Mélange aléatoire</button>
+          <label class="check"><input type="checkbox" id="chk-animate" checked> Animer</label>
+        </div>
+        <details class="notation">
+          <summary>Notation acceptée</summary>
+          <div id="notation-help"></div>
+        </details>
+      </div>
+
+      <div id="net" class="net"></div>
+      <div class="solve-bar">
+        <button id="btn-solve" class="primary">Résoudre</button>
+      </div>
+      <div id="message" class="message hidden"></div>
+    </section>
+
+    <!-- Vue 3D -->
+    <section class="panel view-panel">
+      <div id="viewer" class="viewer"></div>
+      <div class="view-tools">
+        <button id="btn-reset-view" class="secondary small">Recentrer la vue</button>
+        <span class="hint small">Glisser pour tourner, molette pour zoomer.</span>
+      </div>
+    </section>
+
+    <!-- Solution -->
+    <section class="panel solution-panel">
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-rtab="solution" role="tab">Solution</button>
+        <button class="tab" data-rtab="cheat" role="tab">Aide-mémoire</button>
+      </nav>
+      <div id="rtab-solution">
+      <div id="sol-empty" class="hint">Saisissez l'état du puzzle puis lancez la résolution.</div>
+      <div id="sol" class="hidden">
+        <div class="sol-modes" id="sol-modes"></div>
+        <div id="sol-summary" class="sol-summary"></div>
+        <div class="player">
+          <button id="pl-start" class="secondary" title="Revenir à l'état mélangé">Début</button>
+          <button id="pl-prev" class="secondary" title="Coup précédent">Préc.</button>
+          <button id="pl-play" class="primary" title="Lecture / pause">Lecture</button>
+          <button id="pl-next" class="secondary" title="Coup suivant">Suiv.</button>
+          <button id="pl-step" class="secondary" title="Aller à la fin de l'étape">Étape</button>
+          <button id="pl-end" class="secondary" title="Aller à la fin">Fin</button>
+        </div>
+        <label class="speed">
+          <span>Vitesse</span>
+          <input type="range" id="pl-speed" min="0" max="100" value="55">
+        </label>
+        <div id="sol-current" class="current"></div>
+        <div id="sol-stages" class="stages"></div>
+      </div>
+      </div>
+      <div id="rtab-cheat" class="hidden">
+        <div id="cheat" class="cheat"><p class="hint">Chargement...</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
