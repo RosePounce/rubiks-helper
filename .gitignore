@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# GitHub Pages build output (assemblé par web/build.py)
+site/
+
 
 # ide
 .idea/

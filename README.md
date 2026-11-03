@@ -23,6 +23,26 @@ puis mises en cache dans `~/.cache/rubik-helper/` (variable `RUBIK_HELPER_CACHE`
 d'emplacement). Comptez de quelques secondes pour un cube à environ 45 s pour le Gigaminx ou
 le Master Kilominx, une seule fois.
 
+## Version navigateur (GitHub Pages)
+
+Le même outil tourne **entièrement dans le navigateur**, sans serveur : le moteur Python est
+chargé par [Pyodide](https://pyodide.org) (CPython + numpy compilés en WebAssembly) et l'interface
+appelle ce moteur au lieu d'une API HTTP. C'est ce qui permet de l'héberger sur GitHub Pages.
+
+```bash
+python web/build.py                 # assemble le site dans site/
+python -m http.server -d site 8000  # puis ouvrir http://localhost:8000
+```
+
+Déploiement : le workflow `.github/workflows/pages.yml` construit `site/` et le publie à chaque
+push sur `main` (activer Pages en mode « GitHub Actions » dans les réglages du dépôt).
+
+À savoir : le premier chargement télécharge Pyodide et numpy (quelques Mo, une fois, mis en cache
+par le navigateur) ; `kociemba` (solution courte du 3x3) n'est pas disponible dans le navigateur ;
+et comme tout tourne sur le fil principal, la toute première résolution d'un gros cube fige
+brièvement l'onglet le temps de bâtir sa bibliothèque (instantané pour le 3x3, le Pyraminx, le
+4x4 et le Megaminx).
+
 ## Utilisation
 
 1. Choisir le puzzle.
@@ -148,5 +168,8 @@ uv run pytest -q -m "not slow"
 - `src/rubik_helper/solver.py` : lecture de l'état, parité, bibliothèque de commutateurs, résolution.
 - `src/rubik_helper/cheatsheet.py` : aide-mémoire (séquences à connaître par puzzle).
 - `src/rubik_helper/extras.py` : palettes, patron 2D, mélanges, Kociemba.
-- `src/rubik_helper/server.py` : API FastAPI.
+- `src/rubik_helper/api.py` : cœur applicatif (fonctions pures, sans web), partagé serveur / navigateur.
+- `src/rubik_helper/server.py` : couche HTTP FastAPI au-dessus de `api.py`.
+- `src/rubik_helper/webglue.py` : pont navigateur (Pyodide), renvoie du JSON.
 - `src/rubik_helper/static/` : interface (Three.js embarqué, fonctionne hors ligne).
+- `web/` : `boot.js` (chargeur Pyodide) et `build.py` (assemble le site GitHub Pages).

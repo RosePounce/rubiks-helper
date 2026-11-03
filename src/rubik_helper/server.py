@@ -1,21 +1,23 @@
-"""Serveur web : API JSON + interface statique."""
+"""Serveur web : API JSON + interface statique.
+
+Couche HTTP mince au-dessus de `api.py` (qui contient toute la logique, sans
+FastAPI). Le serveur ajoute le suivi de « préparation » des bibliothèques et le
+service des fichiers statiques.
+"""
 
 from __future__ import annotations
 
-import random
 import threading
 from pathlib import Path
 
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .cheatsheet import build_cheatsheet
-from .extras import kociemba_solution, net_layout, palette, random_scramble
-from .puzzle import CATALOG, get_puzzle
-from .solver import SolveError, get_library, solve_colors
+from . import api
+from .puzzle import CATALOG
+from .solver import SolveError
 
 STATIC = Path(__file__).parent / "static"
 
@@ -24,20 +26,14 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 _locks: dict[str, threading.Lock] = {pid: threading.Lock() for pid in CATALOG}
 _ready: set[str] = set()
-_json_cache: dict[str, dict] = {}
-
-
-def _puzzle(pid: str):
-    if pid not in CATALOG:
-        raise HTTPException(404, f"Puzzle inconnu : {pid}")
-    return get_puzzle(pid)
+_info_cache: dict[str, dict] = {}
+_cheat_cache: dict[str, dict] = {}
 
 
 def _library(pid: str):
     with _locks[pid]:
-        lib = get_library(get_puzzle(pid))
+        api.ensure_library(pid)
         _ready.add(pid)
-        return lib
 
 
 def _warmup():
@@ -60,31 +56,24 @@ def index():
 
 @app.get("/api/puzzles")
 def list_puzzles():
-    return [{"id": pid, "label": lbl, "ready": pid in _ready} for pid, (lbl, _, _) in CATALOG.items()]
+    return [{**p, "ready": p["id"] in _ready} for p in api.catalog()]
 
 
 @app.get("/api/puzzles/{pid}")
 def puzzle_info(pid: str):
-    pz = _puzzle(pid)
-    if pid not in _json_cache:
-        data = pz.to_json()
-        net = net_layout(pz)
-        for s in data["stickers"]:
-            s["net"] = net[s["id"]]
-        data["palette"] = palette(pz)
-        data["solved"] = [int(f) for f in pz.sticker_face]
-        _json_cache[pid] = data
-    return {**_json_cache[pid], "ready": pid in _ready}
-
-
-_cheat_cache: dict[str, dict] = {}
+    if pid not in CATALOG:
+        raise HTTPException(404, f"Puzzle inconnu : {pid}")
+    if pid not in _info_cache:
+        _info_cache[pid] = api.info(pid)
+    return {**_info_cache[pid], "ready": pid in _ready}
 
 
 @app.get("/api/cheatsheet/{pid}")
 def cheatsheet(pid: str):
-    pz = _puzzle(pid)
+    if pid not in CATALOG:
+        raise HTTPException(404, f"Puzzle inconnu : {pid}")
     if pid not in _cheat_cache:
-        _cheat_cache[pid] = build_cheatsheet(pz, _library(pid))
+        _cheat_cache[pid] = api.cheatsheet(pid)
     return _cheat_cache[pid]
 
 
@@ -95,19 +84,16 @@ class SolveRequest(BaseModel):
 
 @app.post("/api/solve")
 def solve(req: SolveRequest):
-    pz = _puzzle(req.puzzle)
-    if len(req.colors) != pz.n:
-        raise HTTPException(400, f"{pz.n} facettes attendues, {len(req.colors)} reçues.")
+    if req.puzzle not in CATALOG:
+        raise HTTPException(404, f"Puzzle inconnu : {req.puzzle}")
     _library(req.puzzle)
     try:
-        res = solve_colors(pz, req.colors)
+        return api.solve(req.puzzle, req.colors)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except SolveError as e:
         return JSONResponse(status_code=422, content={"error": str(e), "stickers": e.stickers,
                                                       "repairs": e.repairs})
-    short = kociemba_solution(pz, req.colors, res["face_colors"])
-    if short is not None:
-        res["short"] = {"moves": short, "move_count": len(short)}
-    return res
 
 
 class FormulaRequest(BaseModel):
@@ -116,25 +102,14 @@ class FormulaRequest(BaseModel):
     colors: list[int] | None = None
 
 
-def _anim_tokens(toks):
-    return [{"name": t["name"], "face": t["face"], "angle": t["angle"], "members": t["members"],
-             "perm": t["perm"].tolist()} for t in toks]
-
-
 @app.post("/api/formula")
 def formula(req: FormulaRequest):
-    """Analyse une formule et renvoie les jetons animables et les couleurs finales."""
-    pz = _puzzle(req.puzzle)
+    if req.puzzle not in CATALOG:
+        raise HTTPException(404, f"Puzzle inconnu : {req.puzzle}")
     try:
-        toks = pz.parse(req.formula)
+        return api.formula(req.puzzle, req.formula, req.colors)
     except ValueError as e:
         return JSONResponse(status_code=422, content={"error": str(e)})
-    cur = np.asarray(req.colors if req.colors is not None else pz.sticker_face, dtype=int)
-    for t in toks:
-        out = np.empty_like(cur)
-        out[t["perm"]] = cur
-        cur = out
-    return {"tokens": _anim_tokens(toks), "colors": cur.tolist()}
 
 
 class ScrambleRequest(BaseModel):
@@ -144,15 +119,9 @@ class ScrambleRequest(BaseModel):
 
 @app.post("/api/scramble")
 def scramble(req: ScrambleRequest):
-    pz = _puzzle(req.puzzle)
-    rng = random.Random(req.seed)
-    text = random_scramble(pz, rng)
-    cur = np.asarray(pz.sticker_face, dtype=int)
-    for t in pz.parse(text):
-        out = np.empty_like(cur)
-        out[t["perm"]] = cur
-        cur = out
-    return {"formula": text, "colors": cur.tolist()}
+    if req.puzzle not in CATALOG:
+        raise HTTPException(404, f"Puzzle inconnu : {req.puzzle}")
+    return api.scramble(req.puzzle, req.seed)
 
 
 def main() -> None:

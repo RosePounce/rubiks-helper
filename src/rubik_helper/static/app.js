@@ -24,6 +24,9 @@ const scanner = new CameraScanner($("cam-video"), $("cam-overlay"));
 
 // ---------------------------------------------------------------- utilitaires
 async function api(path, body) {
+  // Build GitHub Pages : pas de serveur, le moteur Python tourne dans le
+  // navigateur (Pyodide). window.RHAPI, posé par boot.js, imite fetch().
+  if (window.RHAPI) return window.RHAPI.call(path, body);
   const res = await fetch(path, body ? {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   } : undefined);
