@@ -48,7 +48,13 @@ concernées en surbrillance. Les cas particuliers (parité, pièce tournée sur 
 à la fin.
 
 Pour le 3x3, une **solution courte** (environ 20 coups, algorithme de Kociemba) est proposée
-en plus du guide.
+en plus du guide. Cette optimisation est **facultative** : elle repose sur `kociemba`, une
+extension C qui exige un compilateur (Microsoft C++ Build Tools sous Windows). Sans elle,
+l'application fonctionne normalement et omet simplement la solution courte. Pour l'activer :
+
+```bash
+uv sync --extra kociemba      # nécessite un compilateur C installé
+```
 
 ## Puzzle mal remonté
 

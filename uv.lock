@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -463,9 +463,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "kociemba" },
     { name = "numpy" },
     { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+kociemba = [
+    { name = "kociemba" },
 ]
 
 [package.dev-dependencies]
@@ -476,10 +480,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.162.0" },
-    { name = "kociemba", specifier = ">=1.2.1" },
+    { name = "kociemba", marker = "extra == 'kociemba'", specifier = ">=1.2.1" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
+provides-extras = ["kociemba"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.2.0" }]

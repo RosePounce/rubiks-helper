@@ -59,6 +59,7 @@ def test_solve_big(pid):
 
 
 def test_kociemba_short():
+    pytest.importorskip("kociemba", reason="optional C extension, not installed")
     pz = get_puzzle("3x3")
     colors = scrambled_colors(pz, 3, rotate=False)
     res = solve_colors(pz, colors)
