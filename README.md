@@ -5,6 +5,7 @@ Solveur et guide pas à pas pour puzzles à rotation de faces :
 | Puzzle | Équivalent | Pièces résolues |
 |---|---|---|
 | Cubes 3x3 à 7x7 | | coins, arêtes, ailes, tous les centres |
+| Pyraminx | tétraèdre | coins, arêtes, pointes |
 | Megaminx | 3x3 | coins, arêtes |
 | Master Kilominx | 4x4 | coins, ailes, centres |
 | Gigaminx | 5x5 | coins, arêtes, ailes, centres X et T |
@@ -89,17 +90,22 @@ longues (environ 110 coups), mais n'utilisent que cet algorithme pour les arête
 
 - Cubes : `R U F L D B`, `'` et `2` ; `Rw` ou `r` = deux couches, `3Rw` = trois couches ;
   `2R` = deuxième tranche seule ; `M E S` = tranche centrale ; `x y z` = rotation du cube.
+- Pyraminx : sommets `U L R B` ; `U` = 1/3 de tour horaire du coin et de ses arêtes, `U'` en sens
+  inverse ; minuscules `u l r b` = la pointe seule.
 - Famille Megaminx : faces `U F R BR BL L B DBL DL DR DBR D` ; `R` = 1/5 de tour horaire,
   `R2` = 2/5, `R2'` et `R'` en sens inverse ; `2R` = deuxième tranche (Gigaminx, Master Kilominx) ;
   `R++ R-- D++ D--` = mouvements des mélanges WCA (Pochmann).
 
 ## Méthode de résolution
 
-Le moteur est générique : chaque puzzle est un polyèdre découpé par des plans parallèles
-aux faces ; facettes, pièces, orbites et mouvements en sont déduits par le calcul.
+Le moteur est générique : chaque puzzle est un polyèdre (cube, dodécaèdre ou tétraèdre) découpé
+par des plans parallèles aux faces ; facettes, pièces, orbites et mouvements en sont déduits par
+le calcul.
 
 La résolution suit la méthode des commutateurs (celle de la résolution à l'aveugle « 3-style »),
-dans l'ordre d'une réduction : centres, arêtes centrales, ailes, coins.
+dans l'ordre d'une réduction : centres, arêtes centrales, ailes, coins. Le Pyraminx fait exception :
+ses coins et ses pointes ne changent jamais de place (on les oriente simplement sur place, les
+coins avant les arêtes puis les pointes à la fin), seules les arêtes se résolvent par commutateurs.
 
 1. **Parité** : si une orbite a une permutation impaire, un quart de tour la rend paire.
 2. **3-cycles** : pour chaque orbite, chaque étape est un commutateur (placement, préparation, tour,
@@ -109,9 +115,9 @@ dans l'ordre d'une réduction : centres, arêtes centrales, ailes, coins.
    tampon et garde la plus courte.
    Un commutateur peut déranger des pièces d'une étape ultérieure, jamais celles déjà résolues.
 
-Longueurs typiques : 3x3 environ 80 coups (et environ 20 avec la solution courte), 4x4 environ 210,
-5x5 environ 290, 6x6 environ 500, 7x7 environ 580, Megaminx environ 200, Master Kilominx
-environ 535, Gigaminx environ 790. C'est long par rapport à une méthode de vitesse, mais chaque
+Longueurs typiques : Pyraminx une quinzaine de coups, 3x3 environ 80 coups (et environ 20 avec la
+solution courte), 4x4 environ 210, 5x5 environ 290, 6x6 environ 500, 7x7 environ 580, Megaminx
+environ 200, Master Kilominx environ 535, Gigaminx environ 790. C'est long par rapport à une méthode de vitesse, mais chaque
 étape est courte, indépendante et compréhensible.
 
 ## Limites connues

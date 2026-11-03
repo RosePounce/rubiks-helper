@@ -61,17 +61,19 @@ def corner_frames(pz: Puzzle, colors: np.ndarray):
     successivement chaque coin dans chaque orientation (24 ou 60 repères).
     Le premier repère proposé laisse en place le coin déjà présent.
     """
-    corners = next(o for o in pz.orbits if o.kind == "corner")
+    # tous les coins (le cube/minx n'en a qu'une orbite ; le Pyraminx en a une
+    # par sommet, chacune d'une seule pièce à position fixe)
+    corner_pieces = [p for o in pz.orbits if o.kind == "corner" for p in o.pieces]
     nf = len(pz.geo.face_names)
     tuples = []
-    for p in corners.pieces:
+    for p in corner_pieces:
         t = tuple(int(colors[s]) for s in pz.pieces[p])
         if -1 in t:
             raise SolveError("Toutes les facettes des coins doivent être renseignées.",
                              [s for s in pz.pieces[p] if colors[s] == -1])
         tuples.append(t)
     rots = {t[i:] + t[:i] for t in tuples for i in range(3)}
-    ref = corners.pieces[0]
+    ref = corner_pieces[0]
     ref_faces = [int(pz.sticker_face[s]) for s in pz.pieces[ref]]
     out = []
     seen = set()
@@ -84,7 +86,7 @@ def corner_frames(pz: Puzzle, colors: np.ndarray):
             changed = True
             while changed and -1 in fc:
                 changed = False
-                for p in corners.pieces:
+                for p in corner_pieces:
                     fs = [int(pz.sticker_face[s]) for s in pz.pieces[p]]
                     known = [fc[f] for f in fs]
                     if known.count(-1) != 1:
@@ -297,7 +299,15 @@ def orbit_rank(pz: Puzzle) -> dict[int, int]:
     supérieur (résolues plus tard), jamais celles déjà résolues.
     """
     orbs = [o for o in pz.orbits if not (o.fixed or o.ignored)]
-    orbs.sort(key=lambda o: (_ORDER_KIND[o.kind], o.id))
+    if pz.geo.kind == "tetra":
+        # coins (orientés sur place) avant les arêtes : leurs tours dérangent les
+        # arêtes, alors que les commutateurs d'arêtes préservent l'orientation des
+        # coins (chaque générateur y apparaît une fois à l'endroit, une fois à
+        # l'envers). Pointes en dernier : elles ne dérangent rien.
+        tetra_order = {"corner": 0, "midge": 1, "tip": 2}
+        orbs.sort(key=lambda o: (tetra_order[o.kind], o.id))
+    else:
+        orbs.sort(key=lambda o: (_ORDER_KIND[o.kind], o.id))
     return {o.id: i for i, o in enumerate(orbs)}
 
 
@@ -801,6 +811,47 @@ class Solver:
             cont = pz.apply_seq(cont, seq)
         raise SolveError(f"{orb.label} : la résolution ne converge pas.")
 
+    # ---- résolution d'une pièce à position fixe, orientation seule (pointes, coins du Pyraminx)
+    def _twist_move(self, p: int) -> int | None:
+        """Mouvement de base (quantité 1) qui fait pivoter la pièce p sur place."""
+        pz = self.pz
+        s0 = pz.pieces[p][0]
+        for mi in pz.frame_moves:
+            m = pz.moves[mi]
+            if m.amount != 1 or s0 not in m.members:
+                continue
+            t = int(m.perm[s0])
+            if t != s0 and int(pz.piece_of[t]) == p:
+                return mi
+        return None
+
+    def _solve_twist(self, orb: Orbit, cont: np.ndarray, stage: Stage) -> np.ndarray:
+        pz = self.pz
+        for p in orb.pieces:
+            sts = pz.pieces[p]
+            if all(cont[s] == s for s in sts):
+                continue
+            mi = self._twist_move(p)
+            if mi is None:
+                raise SolveError(f"{orb.label} : pièce impossible à orienter.", list(sts))
+            for t in range(1, orb.size):
+                test = cont
+                for _ in range(t):
+                    test = pz.apply(test, pz.moves[mi].perm)
+                if all(test[s] == s for s in sts):
+                    seq = cancel(pz, [mi] * t)
+                    word = "pointe" if orb.kind == "tip" else "coin"
+                    stage.steps.append(Step(
+                        title=f"Oriente le {word} {piece_name(pz, p)}",
+                        detail=("On fait pivoter la pièce sur place jusqu'à la bonne orientation. "
+                                + self._side_effects(seq, orb)),
+                        moves=seq, notation=self._fmt(seq), highlight=list(sts)))
+                    cont = pz.apply_seq(cont, seq)
+                    break
+            else:
+                raise SolveError(f"{orb.label} : orientation impossible (état incohérent).", list(sts))
+        return cont
+
     def is_solved(self, st: State, cont: np.ndarray) -> bool:
         pz = self.pz
         for orb in pz.orbits:
@@ -833,7 +884,18 @@ class Solver:
 
         rank = orbit_rank(pz)
         orbs = sorted((o for o in pz.orbits if o.id in rank), key=lambda o: rank[o.id])
+        twist_stage = None   # regroupe les orbites d'orientation voisines de même nature
         for orb in orbs:
+            # pièce à position fixe, orientation seule (pointes et coins du Pyraminx)
+            if len(orb.pieces) == 1 and orb.size > 1:
+                title = _TWIST_TITLE.get(orb.kind, orb.label)
+                if twist_stage is None or twist_stage.title != title:
+                    twist_stage = Stage(title=title, detail=_TWIST_TEXT.get(orb.kind, ""))
+                cont = self._solve_twist(orb, cont, twist_stage)
+                if twist_stage.steps and twist_stage not in stages:
+                    stages.append(twist_stage)
+                continue
+            twist_stage = None
             # deux stratégies (choix glouton, emplacement tampon) : on garde la plus courte
             best = None
             for greedy in (True, False):
@@ -868,6 +930,14 @@ _STAGE_TEXT = {
     "midge": "Arêtes : chaque commutateur place deux arêtes à la fois, orientation comprise.",
     "corner": "Coins : chaque commutateur place deux coins à la fois, orientation comprise.",
 }
+
+_TWIST_TEXT = {
+    "corner": "Chaque coin est déjà à sa place : on l'oriente d'un tour de sommet. Cela dérange "
+              "les arêtes, résolues ensuite ; les commutateurs d'arêtes laisseront les coins orientés.",
+    "tip": "Les pointes tournent indépendamment du reste : on oriente chacune d'un simple tour.",
+}
+
+_TWIST_TITLE = {"corner": "Coins", "tip": "Pointes"}
 
 
 # ---------------------------------------------------------------------------

@@ -68,6 +68,8 @@ class Puzzle:
     # ------------------------------------------------------------------ moves
     def _amount_suffix(self, a: int) -> str:
         o = self.geo.order
+        if o == 3:
+            return {1: "", 2: "'"}[a]
         if o == 4:
             return {1: "", 2: "2", 3: "'"}[a]
         return {1: "", 2: "2", 3: "2'", 4: "'"}[a]
@@ -88,6 +90,9 @@ class Puzzle:
             name_face = geo.face_names[L.face]
             if L.middle:
                 base = {"L": "M", "D": "E", "F": "S"}[name_face]
+            elif geo.kind == "tetra":
+                # pointe (index 1) en minuscule, anneau/tour de sommet (index 2) en majuscule
+                base = name_face.lower() if L.index == 1 else name_face
             elif L.index == 1:
                 base = name_face
             else:
@@ -188,7 +193,7 @@ class Puzzle:
             oid = len(self.orbits)
             self.orbits.append(Orbit(id=oid, kind=kind, label="", pieces=sorted(members), size=k,
                                      twist_step=g if g else k, ignored=kind in self.ignored_kinds,
-                                     fixed=len(members) == 1))
+                                     fixed=len(members) == 1 and k == 1))
             for p in members:
                 self.orbit_of_piece[p] = oid
         self._label_orbits()
@@ -212,6 +217,12 @@ class Puzzle:
 
     def _classify(self, members: list[int]) -> str:
         k = len(self.pieces[members[0]])
+        if self.geo.kind == "tetra":
+            if k == 2:
+                return "midge"
+            # k == 3 : pointe (près du sommet) ou coin axial (dans l'anneau)
+            c = sum(self.geo.stickers[s].center for s in self.pieces[members[0]]) / k
+            return "tip" if float((self.geo.normals @ c).min()) < -5 / 3 else "corner"
         n_edges = 12 if self.geo.kind == "cube" else 30
         if k == 3:
             return "corner"
@@ -242,7 +253,7 @@ class Puzzle:
         base = {
             "corner": "Coins", "midge": "Arêtes", "wing": "Ailes (arêtes doubles)",
             "center": "Centres", "xcenter": "Centres X", "tcenter": "Centres T",
-            "oblique": "Centres obliques",
+            "oblique": "Centres obliques", "tip": "Pointes",
         }
         has_wings = any(o.kind == "wing" for o in self.orbits)
         counts: dict[str, int] = {}
@@ -415,8 +426,10 @@ class Puzzle:
         faces = []
         for f, nm in enumerate(geo.face_names):
             c, r, u = face_frame(geo, f)
-            # voisin le plus « en haut » pour guider la prise de vue
-            neigh = [g for g in range(len(geo.normals)) if -0.1 < geo.normals[f] @ geo.normals[g] < 0.99]
+            # voisin le plus « en haut » pour guider la prise de vue (sur le tétraèdre,
+            # les faces adjacentes ont un produit scalaire de -1/3)
+            lo = -0.5 if geo.kind == "tetra" else -0.1
+            neigh = [g for g in range(len(geo.normals)) if lo < geo.normals[f] @ geo.normals[g] < 0.99]
             best = max(float(geo.normals[g] @ u) for g in neigh)
             tops = [g for g in neigh if float(geo.normals[g] @ u) > best - 1e-4]
             faces.append({"name": nm, "normal": geo.normals[f].round(6).tolist(),
@@ -465,6 +478,7 @@ CATALOG = {
     "5x5": ("Cube 5x5", "cube", 5),
     "6x6": ("Cube 6x6", "cube", 6),
     "7x7": ("Cube 7x7", "cube", 7),
+    "pyraminx": ("Pyraminx", "tetra", 3),
     "megaminx": ("Megaminx (équivalent 3x3)", "minx", 3),
     "master-kilominx": ("Master Kilominx (équivalent 4x4)", "minx", 4),
     "gigaminx": ("Gigaminx (équivalent 5x5)", "minx", 5),
@@ -482,6 +496,10 @@ def get_puzzle(pid: str) -> Puzzle:
     if family == "cube":
         depths = [1 - 2 * k / N for k in range(1, N // 2 + 1)]
         geo = build_geometry("cube", depths, middle_slices=(N % 2 == 1))
+        pz = Puzzle(pid, label, geo, family, N)
+    elif family == "tetra":
+        # tétraèdre coupé parallèlement aux faces à -1/3 et -5/3 (arêtes en trois)
+        geo = build_geometry("tetra", [-1 / 3, -5 / 3])
         pz = Puzzle(pid, label, geo, family, N)
     elif pid == "megaminx":
         geo = build_geometry("dodeca", [0.7])

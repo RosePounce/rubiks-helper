@@ -8,7 +8,7 @@ from rubik_helper.extras import kociemba_solution, random_scramble
 from rubik_helper.puzzle import CATALOG, get_puzzle
 from rubik_helper.solver import SolveError, solve_colors
 
-FAST = ["3x3", "4x4", "5x5", "megaminx"]
+FAST = ["3x3", "4x4", "5x5", "megaminx", "pyraminx"]
 ALL = list(CATALOG)
 
 

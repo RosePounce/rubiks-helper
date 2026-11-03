@@ -39,8 +39,20 @@ MINX_PALETTE = [  # ordre des faces : U F R BR BL L B DBL DL DR DBR D
 ]
 
 
+TETRA_PALETTE = [  # ordre des faces : U F L R
+    {"name": "Rouge", "hex": "#dc2626"},
+    {"name": "Vert", "hex": "#16a34a"},
+    {"name": "Bleu", "hex": "#1d4ed8"},
+    {"name": "Jaune", "hex": "#facc15"},
+]
+
+
 def palette(pz: Puzzle) -> list[dict]:
-    return CUBE_PALETTE if pz.geo.kind == "cube" else MINX_PALETTE
+    if pz.geo.kind == "cube":
+        return CUBE_PALETTE
+    if pz.geo.kind == "tetra":
+        return TETRA_PALETTE
+    return MINX_PALETTE
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +60,7 @@ def palette(pz: Puzzle) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _NET_TREES = {
+    "tetra": ("B", [("B", "U"), ("B", "L"), ("B", "R")]),
     "cube": ("F", [("F", "U"), ("F", "D"), ("F", "L"), ("F", "R"), ("R", "B")]),
     "dodeca": ("U", [("U", "F"), ("U", "R"), ("U", "BR"), ("U", "BL"), ("U", "L"),
                      ("F", "DL"), ("DL", "D"), ("D", "DR"), ("D", "DBR"), ("D", "B"), ("D", "DBL")]),

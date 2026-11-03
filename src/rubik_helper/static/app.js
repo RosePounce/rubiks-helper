@@ -256,6 +256,11 @@ function buildNotationHelp() {
       <li><code>Rw</code> ou <code>r</code> : deux couches ; <code>3Rw</code> : trois couches</li>
       <li><code>2R</code> : deuxième tranche seule ; <code>M E S</code> : tranche centrale (cubes impairs)</li>
       <li><code>x y z</code> : rotation du cube entier</li></ul>`;
+  } else if (p.family === "tetra") {
+    el.innerHTML = `<ul>
+      <li><code>U</code> 1/3 de tour horaire du sommet, <code>U'</code> dans l'autre sens</li>
+      <li>Sommets : <code>${p.faces.map((f) => f.name).join(" ")}</code> (tour du coin et de ses arêtes)</li>
+      <li>Minuscules <code>u l r b</code> : la pointe seule</li></ul>`;
   } else {
     el.innerHTML = `<ul>
       <li><code>R</code> 1/5 de tour horaire, <code>R2</code> 2/5, <code>R2'</code> et <code>R'</code> dans l'autre sens</li>

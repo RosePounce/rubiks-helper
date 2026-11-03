@@ -117,6 +117,34 @@ def dodecahedron_normals() -> tuple[list[str], np.ndarray]:
     return names, pts[order]
 
 
+def tetrahedron_normals() -> tuple[list[str], np.ndarray]:
+    """Normales des 4 faces d'un tétraèdre régulier, apex en haut.
+
+    Les tours d'un Pyraminx se font autour des 4 sommets ; or chaque sommet
+    est opposé à une face, et l'axe du sommet est colinéaire à la normale de
+    cette face. On nomme donc chaque face d'après le sommet qu'elle affronte :
+    la face « U » est celle opposée au sommet du haut, de sorte qu'un tour
+    « U » fait tourner la couche située près du sommet du haut. Paires
+    face/sommet opposé : U (bas) / sommet haut, L R B (faces hautes) / sommets
+    bas.
+    """
+    # une face vers le bas (le socle), les trois autres relevées à 120°.
+    # Notation Pyraminx U/L/R/B : un tour « X » fait pivoter la couche près du
+    # sommet opposé à la face X. La face U (socle) est opposée à l'apex, donc
+    # « U » tourne le sommet du haut ; la face B (avant) est opposée au sommet
+    # arrière-bas.
+    up = math.sqrt(8) / 3          # rayon horizontal des normales hautes
+    names = ["U", "B", "L", "R"]
+    normals = np.array([
+        [0.0, -1.0, 0.0],                                   # U : socle (sommet opposé = apex)
+        [0.0, 1 / 3, up],                                   # B : face avant relevée
+        [-up * math.sqrt(3) / 2, 1 / 3, -up / 2],           # L
+        [up * math.sqrt(3) / 2, 1 / 3, -up / 2],            # R
+    ], dtype=float)
+    normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+    return names, normals
+
+
 # ---------------------------------------------------------------------------
 # Découpe de polygones convexes
 # ---------------------------------------------------------------------------
@@ -233,6 +261,9 @@ def build_geometry(kind: str, depths: list[float], middle_slices: bool = False) 
     elif kind == "dodeca":
         names, normals = dodecahedron_normals()
         order = 5
+    elif kind == "tetra":
+        names, normals = tetrahedron_normals()
+        order = 3
     else:
         raise ValueError(kind)
     geo = Geometry(kind=kind, face_names=names, normals=normals, order=order)
@@ -260,6 +291,16 @@ def build_geometry(kind: str, depths: list[float], middle_slices: bool = False) 
             sid += 1
 
     # tranches
+    if kind == "tetra":
+        # Deux couches par axe, du côté du sommet opposé à chaque face
+        # (dot(x, n_face) négatif). index 1 = pointe (la plus extérieure au
+        # sommet), index 2 = anneau (coin axial + trois arêtes). Un tour de
+        # sommet « complet » est la composée des deux (même axe, elles commutent).
+        d_out, d_in = depths[0], depths[1]     # -1/3, -5/3 (décroissants)
+        for f in range(len(normals)):
+            geo.layers.append(Layer(face=f, index=1, lo=-4.0, hi=d_in))     # pointe
+            geo.layers.append(Layer(face=f, index=2, lo=d_in, hi=d_out))    # anneau
+        return geo
     bounds = [1.0 + 1e-3] + list(depths)
     for f in range(len(normals)):
         for k in range(1, len(bounds)):

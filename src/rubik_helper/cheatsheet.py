@@ -22,6 +22,20 @@ _PIECE = {
 # nombre de faces voisines utiles pour situer une pièce sur sa face
 _SIDES = {"wing": 1, "tcenter": 1, "xcenter": 2, "oblique": 2}
 
+# orbites à position fixe, orientation seule (pointes et coins du Pyraminx)
+_TWIST_TITLE = {"corner": "Coins", "tip": "Pointes"}
+_TWIST_GOAL = {
+    "corner": "Orienter les quatre coins : chacun est déjà à sa place, il suffit de le tourner.",
+    "tip": "Orienter les quatre pointes.",
+}
+_TWIST_HOW = {
+    "corner": "Un coin ne change jamais de place ; on le tourne d'un tiers de tour (le tour de son "
+              "sommet) jusqu'à la bonne orientation. On oriente les coins d'abord : les séquences "
+              "d'arêtes qui suivent les laisseront en place.",
+    "tip": "Chaque pointe tourne toute seule, sans rien déranger : on la met dans le bon sens d'un "
+           "simple tour. À faire quand on veut, en général à la fin.",
+}
+
 _GOAL = {
     "corner": "Placer les coins, orientation comprise.",
     "midge": "Placer les arêtes centrales, orientation comprise.",
@@ -211,12 +225,37 @@ def build_cheatsheet(pz: Puzzle, lib: Library) -> dict:
         "on les y amène d'abord par un ou deux coups de placement, on joue la séquence, puis on défait "
         "le placement.",
     ]
-    order = "Ordre de résolution : " + ", ".join(o.label[0].lower() + o.label[1:] for o in orbs) + "."
+    def _twist(o: Orbit) -> bool:
+        return len(o.pieces) == 1 and o.size > 1
+
+    # libellés d'ordre : les orbites d'orientation (coins/pointes du Pyraminx) sont regroupées
+    labels, seen_twist = [], set()
+    for o in orbs:
+        if _twist(o):
+            if o.kind in seen_twist:
+                continue
+            seen_twist.add(o.kind)
+            labels.append(_TWIST_TITLE[o.kind])
+        else:
+            labels.append(o.label)
+    order = "Ordre de résolution : " + ", ".join(l[0].lower() + l[1:] for l in labels) + "."
 
     sections = []
     from .algos import user_algs
     user = user_algs(pz)
+    twist_done = set()
     for orb in orbs:
+        if _twist(orb):
+            if orb.kind in twist_done:
+                continue
+            twist_done.add(orb.kind)
+            sections.append({
+                "title": _TWIST_TITLE.get(orb.kind, orb.label),
+                "goal": _TWIST_GOAL.get(orb.kind, ""),
+                "how": _TWIST_HOW.get(orb.kind, ""),
+                "examples": [],
+            })
+            continue
         if orb.kind in user:
             sections.append({
                 "title": orb.label,
@@ -258,9 +297,10 @@ def build_cheatsheet(pz: Puzzle, lib: Library) -> dict:
                     "replacent avec les mêmes séquences. Le guide fait ce quart de tour dès le début.",
         })
     else:
+        turn = {3: "tiers", 5: "cinquièmes"}.get(pz.geo.order, "fractions")
         tips.append({
             "title": "Pas de parité",
-            "text": "Toutes les rotations sont des cinquièmes de tour : il ne reste jamais deux "
+            "text": f"Toutes les rotations sont des {turn} de tour : il ne reste jamais deux "
                     "pièces échangées seules. Si cela arrive, le puzzle a été mal remonté.",
         })
     tips.append({
@@ -273,6 +313,8 @@ def build_cheatsheet(pz: Puzzle, lib: Library) -> dict:
         "title": "Lire une séquence à l'envers",
         "text": ("Inverser R U' donne U R' : on part du dernier coup et on change le sens de chacun ; "
                  "un demi-tour R2 reste R2." if cube else
+                 "Inverser R U' donne U R' : on part du dernier coup et on change le sens de chacun."
+                 if pz.geo.order == 3 else
                  "Inverser R U2' donne U2 R' : on part du dernier coup et on change le sens de chacun "
                  "(R devient R', R2 devient R2')."),
     })
