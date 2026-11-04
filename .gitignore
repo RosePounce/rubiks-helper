@@ -15,3 +15,13 @@ site/
 
 # ide
 .idea/
+.vscode/
+
+# tests
+.pytest_cache/
+
+# fichiers système
+Thumbs.db
+desktop.ini
+.DS_Store
+.directory

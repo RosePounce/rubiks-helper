@@ -1,0 +1,11 @@
+# Fins de ligne : LF dans le dépôt et dans la copie de travail, quel que soit
+# le système (Windows, Ubuntu, Kubuntu, Manjaro). Évite les faux diffs CRLF/LF
+# quand le projet est cloné sous Windows.
+* text=auto eol=lf
+
+# Fichiers binaires : jamais de conversion.
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.zip  binary
+*.pkl  binary
