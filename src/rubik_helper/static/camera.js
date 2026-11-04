@@ -34,9 +34,45 @@ export class CameraScanner {
 
   get active() { return !!this.stream; }
 
+  // Les couleurs de la palette sont des couleurs d'écran, bien plus saturées
+  // qu'une facette vue par une webcam. Tant qu'une couleur n'a pas été vue
+  // réellement (centre fixe ou facette validée), sa référence est une
+  // estimation : palette désaturée, corrigée de la dominante de l'éclairage
+  // dès que le blanc a été calibré.
   setPalette(palette) {
     this.palette = palette;
-    this.refs = palette.map((p) => rgbToLab(hexToRgb(p.hex)));
+    this.base = palette.map((p) => rgbToLab(hexToRgb(p.hex)));
+    this.refs = this.base.map(() => null);   // Lab mesuré à la caméra, ou null
+    this.white = this._achromaticIndex();
+  }
+
+  // Indice de la couleur la plus claire et la moins saturée (le blanc).
+  _achromaticIndex() {
+    let best = 0, bs = -Infinity;
+    this.base.forEach(([L, a, b], i) => {
+      const s = L - 2 * Math.hypot(a, b);
+      if (s > bs) { bs = s; best = i; }
+    });
+    return best;
+  }
+
+  _ref(i) {
+    if (this.refs[i]) return this.refs[i];
+    const [L, a, b] = this.base[i];
+    let ref = [L, CAMERA_CHROMA * a, CAMERA_CHROMA * b];
+    const w = this.refs[this.white];
+    if (w) {
+      // balance des blancs : même rapport de luminance et même dominante que le blanc mesuré
+      const [Lw, aw, bw] = this.base[this.white];
+      ref = [ref[0] * (w[0] / Lw), ref[1] + (w[1] - aw), ref[2] + (w[2] - bw)];
+    }
+    return ref;
+  }
+
+  // Centre fixe de la face (3x3, 5x5, Megaminx...) : sa couleur est connue d'avance.
+  _fixedCenter(puzzle, faceIndex) {
+    if (!puzzle.orbits) return null;
+    return puzzle.stickers.find((s) => s.face === faceIndex && puzzle.orbits[s.orbit]?.fixed) || null;
   }
 
   _transform(face) {
@@ -96,10 +132,7 @@ export class CameraScanner {
     octx.drawImage(this.video, 0, 0, w, h);
     const face = puzzle.faces[faceIndex];
     const T = this._transform(face);
-    const colors = {};
-    this.samples = {};
-    for (const s of puzzle.stickers) {
-      if (s.face !== faceIndex || s.ignored) continue;
+    const sample = (s) => {
       const pts = s.poly2d.map(T);
       const [cx, cy] = centroid(pts);
       const r = Math.max(2, 0.3 * Math.min(...pts.map(([x, y]) => Math.hypot(x - cx, y - cy))));
@@ -107,35 +140,54 @@ export class CameraScanner {
       // médiane par canal : robuste aux reflets
       const ch = [[], [], []];
       for (let i = 0; i < data.length; i += 4) { ch[0].push(data[i]); ch[1].push(data[i + 1]); ch[2].push(data[i + 2]); }
-      const rgb = ch.map((a) => a.sort((x, y) => x - y)[a.length >> 1]);
-      const lab = rgbToLab(rgb);
+      return rgbToLab(ch.map((a) => a.sort((x, y) => x - y)[a.length >> 1]));
+    };
+    // 1. le centre fixe donne la vraie couleur de la face, sous l'éclairage actuel
+    const center = this._fixedCenter(puzzle, faceIndex);
+    if (center) this.refs[puzzle.solved[center.id]] = sample(center);
+    // 2. classement des facettes avec les références à jour
+    const colors = {};
+    this.samples = {};
+    for (const s of puzzle.stickers) {
+      if (s.face !== faceIndex || s.ignored) continue;
+      const lab = sample(s);
       this.samples[s.id] = lab;
-      colors[s.id] = this._classify(lab);
+      colors[s.id] = s === center ? puzzle.solved[s.id] : this.classify(lab);
     }
     this.result = { face: faceIndex, colors };
     return colors;
   }
 
-  _classify(lab) {
+  classify(lab) {
     let best = 0, bd = Infinity;
-    this.refs.forEach((ref, i) => {
-      // la luminance compte moins que la teinte (éclairage variable)
-      const d = 0.5 * (lab[0] - ref[0]) ** 2 + (lab[1] - ref[1]) ** 2 + (lab[2] - ref[2]) ** 2;
+    for (let i = 0; i < this.base.length; i++) {
+      const d = labDistance(lab, this._ref(i));
       if (d < bd) { bd = d; best = i; }
-    });
+    }
     return best;
   }
 
-  // Apprentissage : la couleur validée par l'utilisateur affine la référence.
+  // Apprentissage : la couleur validée par l'utilisateur devient (ou affine) la référence.
   learn(finalColors) {
     if (!this.samples) return;
     for (const [id, lab] of Object.entries(this.samples)) {
       const c = finalColors[id];
       if (c === undefined || c < 0) continue;
       const ref = this.refs[c];
-      for (let k = 0; k < 3; k++) ref[k] = 0.5 * ref[k] + 0.5 * lab[k];
+      this.refs[c] = ref ? ref.map((v, k) => 0.5 * v + 0.5 * lab[k]) : lab.slice();
     }
   }
+}
+
+// Saturation typique d'une facette vue par une webcam, rapportée à la palette d'écran.
+const CAMERA_CHROMA = 0.55;
+
+// Distance de couleur : la luminance compte peu (exposition variable, reflets),
+// la teinte et la saturation comptent pleinement. Comparer en a/b sépare le
+// blanc (a, b proches de 0) d'un bleu pâle (b nettement négatif) même quand
+// leurs luminances se rapprochent.
+export function labDistance(p, q) {
+  return 0.2 * (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
 }
 
 function centroid(pts) {
