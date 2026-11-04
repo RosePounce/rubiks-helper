@@ -16,7 +16,23 @@ Solveur et guide pas à pas pour puzzles à rotation de faces :
 uv run rubik-helper            # http://127.0.0.1:8000
 uv run rubik-helper --port 8765
 uv run rubik-helper --prepare  # précalcule toutes les bibliothèques puis quitte
+uv run rubik-helper --lan      # réseau local en HTTPS, pour la caméra d'un téléphone
 ```
+
+### Depuis un téléphone
+
+Le navigateur n'autorise la caméra qu'en HTTPS hors de `localhost`. Avec `--lan`, le serveur
+écoute sur toutes les interfaces, en HTTPS, avec un certificat auto-signé créé dans
+`~/.cache/rubik-helper/tls/` (recréé si l'adresse IP de la machine change), et affiche les
+adresses à ouvrir sur le téléphone, par exemple `https://192.168.1.20:8000`.
+
+- Le téléphone doit être sur le même réseau que l'ordinateur.
+- À la première visite, le navigateur signale un certificat non reconnu : choisir
+  « Paramètres avancés », puis « Continuer vers le site ».
+- Pare-feu : autoriser le port une fois par machine.
+  - Ubuntu / Kubuntu (ufw) : `sudo ufw allow 8000/tcp`
+  - Manjaro (firewalld, s'il est actif) : `sudo firewall-cmd --add-port=8000/tcp --permanent && sudo firewall-cmd --reload`
+  - Windows : accepter la fenêtre du pare-feu au premier lancement (réseau privé).
 
 Au premier lancement, les bibliothèques de commutateurs sont calculées en arrière-plan,
 puis mises en cache dans `~/.cache/rubik-helper/` (variable `RUBIK_HELPER_CACHE` pour changer
@@ -50,7 +66,10 @@ brièvement l'onglet le temps de bâtir sa bibliothèque (instantané pour le 3x
    - **Peindre** : choisir une couleur, cliquer sur les facettes du patron ou de la vue 3D
      (Maj + clic remplit une face). Les compteurs signalent une couleur en trop.
    - **Caméra** : présenter chaque face selon le gabarit affiché (la face indiquée en haut),
-     capturer, corriger si besoin, valider. La reconnaissance s'affine au fil des faces validées.
+     capturer, corriger si besoin, valider. Sur les puzzles à centre fixe (3x3, 5x5, Megaminx…),
+     le centre de chaque face capturée sert d'étalon pour sa couleur, sous l'éclairage du moment ;
+     commencer par la face blanche corrige aussi la dominante de la lumière pour les couleurs
+     pas encore vues. La reconnaissance s'affine ensuite au fil des faces validées.
      Le navigateur n'autorise la caméra que sur `localhost` ou en https.
    - **Formule** : coller un mélange (notation WCA) ou générer un mélange aléatoire.
 3. Cliquer sur **Résoudre**. Une saisie incohérente est signalée avec les facettes fautives
@@ -150,7 +169,9 @@ environ 200, Master Kilominx environ 535, Gigaminx environ 790. C'est long par r
   la couche U, de 2/5 de tour dans le sens horaire vu de R (ou de D). Cette convention reste à
   confirmer avec un mélange officiel avant de s'y fier.
 - **Caméra** : la lecture des 12 couleurs d'un Megaminx (vert clair et vert foncé, crème et jaune)
-  est fragile ; une vérification sur le patron reste nécessaire.
+  est fragile ; une vérification sur le patron reste nécessaire. Sans centre fixe (4x4, Pyraminx…),
+  la première face lue sous une lumière chaude peut encore confondre bleu pâle et blanc : corriger
+  puis valider, la couleur corrigée sert alors de référence.
 - Les puzzles sans centre fixe (4x4, 6x6, Master Kilominx) déduisent le schéma de couleurs à partir
   des coins ; tous les coins doivent donc être saisis.
 

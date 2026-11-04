@@ -134,10 +134,27 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--prepare", action="store_true",
                     help="calcule les bibliothèques de commutateurs puis quitte")
+    ap.add_argument("--lan", action="store_true",
+                    help="ouvre l'application au réseau local en HTTPS (caméra du téléphone)")
     args = ap.parse_args()
     if args.prepare:
         for pid in CATALOG:
             print(f"Préparation de {pid}...", flush=True)
             _library(pid)
         return
-    uvicorn.run(app, host=args.host, port=args.port)
+    if not args.lan:
+        uvicorn.run(app, host=args.host, port=args.port)
+        return
+
+    from .lan import ensure_certificate, local_addresses
+
+    addrs = local_addresses()
+    cert, key = ensure_certificate(addrs)
+    host = "0.0.0.0" if args.host == "127.0.0.1" else args.host
+    print("\nRubik Helper accessible sur le réseau local :")
+    for a in addrs or ["<adresse IP de cet ordinateur>"]:
+        print(f"    https://{a}:{args.port}")
+    print("Le certificat est auto-signé : accepter l'avertissement du navigateur à la première visite.")
+    print("Le téléphone doit être sur le même réseau Wi-Fi ; autoriser le port dans le pare-feu si besoin.\n",
+          flush=True)
+    uvicorn.run(app, host=host, port=args.port, ssl_certfile=str(cert), ssl_keyfile=str(key))

@@ -57,8 +57,8 @@ def main() -> None:
     shutil.copy(WEB / "boot.js", OUT / "boot.js")
 
     # 5. moteur Python zippé (uniquement les .py ; pas de static, de cache, ni
-    #    server.py qui dépend de FastAPI, absent du navigateur)
-    skip = {"server.py"}
+    #    server.py et lan.py qui dépendent de FastAPI et cryptography, absents du navigateur)
+    skip = {"server.py", "lan.py"}
     with zipfile.ZipFile(OUT / "rubik_helper.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for py in sorted(PKG.rglob("*.py")):
             if "__pycache__" in py.parts or py.name in skip:
