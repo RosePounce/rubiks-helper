@@ -1,6 +1,7 @@
 import { Viewer } from "/static/viewer.js";
 import { Net } from "/static/net.js";
 import { CameraScanner } from "/static/camera.js";
+import { labToHex } from "/static/colormatch.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +17,7 @@ const app = {
   start: null,        // couleurs de l'état mélangé
   playing: false,
   busy: false,
+  pick: null,         // couleur en cours d'étalonnage à la pipette
 };
 
 const viewer = new Viewer($("viewer"), (id, e) => paint(id, e));
@@ -94,6 +96,7 @@ async function loadPuzzle(id) {
   viewer.load(p);
   net.load(p);
   scanner.setPalette(p.palette);
+  loadCalibration();
   buildPalette();
   buildCameraFaces();
   buildNotationHelp();
@@ -196,8 +199,76 @@ function buildCameraFaces() {
   const sel = $("cam-face");
   sel.innerHTML = app.puzzle.faces.map((f, i) => `<option value="${i}">${f.name}</option>`).join("");
   scanner.result = null;
+  $("cam-reread").disabled = true;
   if (scanner.active) scanner.drawOverlay(app.puzzle, 0);
+  setPick(null);
+  buildCalibration();
 }
+
+// Étalonnage : une couleur mesurée par couleur de la palette, propre à chaque
+// famille de puzzle (cubes, Megaminx, Pyraminx) et à chaque appareil.
+function calibrationKey() { return `calib:${app.puzzle.kind}`; }
+
+function loadCalibration() {
+  try { scanner.model.load(JSON.parse(safeGet(calibrationKey()) || "null")); } catch { /* étalonnage illisible */ }
+}
+
+function saveCalibration() { safeSet(calibrationKey(), JSON.stringify(scanner.model.dump())); }
+
+function buildCalibration() {
+  const el = $("calib-grid");
+  el.innerHTML = "";
+  app.puzzle.palette.forEach((c, i) => {
+    const measured = scanner.model.measured(i);
+    const b = document.createElement("button");
+    b.className = "swatch" + (i === app.pick ? " active" : "");
+    b.title = measured ? "Couleur mesurée : toucher pour la mesurer à nouveau" : "Pas encore mesurée";
+    const hex = measured ? labToHex(scanner.model.refs[i]) : c.hex;
+    b.innerHTML = `<span class="dot${measured ? "" : " unset"}" style="background:${hex}"></span><span>${c.name}</span>`;
+    b.addEventListener("click", () => setPick(app.pick === i ? null : i));
+    el.appendChild(b);
+  });
+}
+
+function setPick(i) {
+  app.pick = i;
+  document.querySelector(".cam-wrap").classList.toggle("picking", i !== null);
+  [...$("calib-grid").children].forEach((x, j) => x.classList.toggle("active", j === i));
+  if (i === null) return;
+  if (!scanner.active) message("Activez la caméra, puis touchez une facette de la couleur choisie.", "info");
+  else message(`Touchez une facette ${app.puzzle.palette[i].name.toLowerCase()} sur l'image.`, "info");
+}
+
+$("cam-overlay").addEventListener("click", (e) => {
+  if (app.pick === null || !scanner.active) return;
+  const i = app.pick;
+  if (!scanner.pick(e.clientX, e.clientY, i)) return;
+  saveCalibration();
+  // couleur suivante pas encore mesurée, pour enchaîner rapidement
+  const n = app.puzzle.palette.length;
+  let next = null;
+  for (let k = 1; k < n; k++) if (!scanner.model.measured((i + k) % n)) { next = (i + k) % n; break; }
+  buildCalibration();
+  setPick(next);
+  if (next === null) message(`${app.puzzle.palette[i].name} mesuré. Toutes les couleurs sont étalonnées.`, "ok");
+});
+
+$("calib-reset").addEventListener("click", () => {
+  scanner.model.reset();
+  saveCalibration();
+  buildCalibration();
+  setPick(null);
+  message("Étalonnage effacé : retour aux couleurs par défaut.", "info");
+});
+
+$("cam-reread").addEventListener("click", () => {
+  const got = scanner.reclassifyAll(app.puzzle);
+  if (app.solution) clearSolution();
+  for (const [id, c] of Object.entries(got)) app.colors[id] = c;
+  render();
+  if (scanner.active) scanner.drawOverlay(app.puzzle, Number($("cam-face").value));
+  message("Toutes les faces ont été relues. Vérifiez le patron, puis lancez la résolution.", "ok");
+});
 
 $("cam-face").addEventListener("change", () => {
   scanner.result = null;
@@ -233,7 +304,11 @@ $("cam-capture").addEventListener("click", () => {
   render();
   scanner.drawOverlay(app.puzzle, f);
   $("cam-accept").disabled = false;
-  message("Face lue. Corrigez si besoin en peignant sur le patron, puis validez.", "info");
+  const all = scanner.capturedFaces() === app.puzzle.faces.length;
+  $("cam-reread").disabled = !all;
+  message(all
+    ? "Face lue. Toutes les faces sont capturées : « Relire toutes les faces » affine l'ensemble."
+    : "Face lue. Corrigez si besoin en peignant sur le patron, puis validez.", "info");
 });
 
 $("cam-accept").addEventListener("click", () => {

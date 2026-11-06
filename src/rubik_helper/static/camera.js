@@ -1,15 +1,26 @@
 // Lecture des couleurs d'une face à la caméra.
 // Le gabarit affiché est exactement la face du puzzle vue de l'extérieur,
 // avec la face voisine indiquée en haut.
+//
+// Les teintes varient d'un fabricant à l'autre : la pipette (`pick`) mesure
+// chaque couleur directement sur le puzzle. Chaque capture est conservée ; une
+// fois toutes les faces capturées, la relecture globale (`reclassifyAll`)
+// reclasse l'ensemble sous contrainte d'effectifs (chaque couleur apparaît
+// autant de fois qu'il y a de facettes par face).
+
+import { ColorModel, balancedAssign, meanLab, rgbToLab } from "./colormatch.js";
 
 export class CameraScanner {
   constructor(video, canvas) {
     this.video = video;
     this.canvas = canvas;
     this.stream = null;
-    this.refs = null;        // couleurs de référence (Lab), apprises au fil des validations
+    this.model = null;
+    this.faces = {};         // face capturée -> { id: lab }
+    this.proposed = {};      // id -> couleur proposée par la dernière lecture
+    this.pinned = {};        // id -> couleur corrigée à la main par l'utilisateur
     this.samples = null;     // dernière capture : { id: lab }
-    this.result = null;      // dernière capture : { id: indice de couleur }
+    this.result = null;      // dernière capture : { face, colors }
   }
 
   async start() {
@@ -34,46 +45,17 @@ export class CameraScanner {
 
   get active() { return !!this.stream; }
 
-  // Les couleurs de la palette sont des couleurs d'écran, bien plus saturées
-  // qu'une facette vue par une webcam. Tant qu'une couleur n'a pas été vue
-  // réellement (centre fixe ou facette validée), sa référence est une
-  // estimation : palette désaturée, corrigée de la dominante de l'éclairage
-  // dès que le blanc a été calibré.
   setPalette(palette) {
     this.palette = palette;
-    this.base = palette.map((p) => rgbToLab(hexToRgb(p.hex)));
-    this.refs = this.base.map(() => null);   // Lab mesuré à la caméra, ou null
-    this.white = this._achromaticIndex();
+    this.model = new ColorModel(palette);
+    this.faces = {};
+    this.proposed = {};
+    this.pinned = {};
+    this.samples = null;
+    this.result = null;
   }
 
-  // Indice de la couleur la plus claire et la moins saturée (le blanc).
-  _achromaticIndex() {
-    let best = 0, bs = -Infinity;
-    this.base.forEach(([L, a, b], i) => {
-      const s = L - 2 * Math.hypot(a, b);
-      if (s > bs) { bs = s; best = i; }
-    });
-    return best;
-  }
-
-  _ref(i) {
-    if (this.refs[i]) return this.refs[i];
-    const [L, a, b] = this.base[i];
-    let ref = [L, CAMERA_CHROMA * a, CAMERA_CHROMA * b];
-    const w = this.refs[this.white];
-    if (w) {
-      // balance des blancs : même rapport de luminance et même dominante que le blanc mesuré
-      const [Lw, aw, bw] = this.base[this.white];
-      ref = [ref[0] * (w[0] / Lw), ref[1] + (w[1] - aw), ref[2] + (w[2] - bw)];
-    }
-    return ref;
-  }
-
-  // Centre fixe de la face (3x3, 5x5, Megaminx...) : sa couleur est connue d'avance.
-  _fixedCenter(puzzle, faceIndex) {
-    if (!puzzle.orbits) return null;
-    return puzzle.stickers.find((s) => s.face === faceIndex && puzzle.orbits[s.orbit]?.fixed) || null;
-  }
+  capturedFaces() { return Object.keys(this.faces).length; }
 
   _transform(face) {
     const w = this.canvas.width, h = this.canvas.height;
@@ -124,89 +106,120 @@ export class CameraScanner {
     ctx.fillText(face.top_label, w / 2, h * 0.065);
   }
 
-  capture(puzzle, faceIndex) {
+  // Image courante de la caméra, dans un canevas lisible.
+  _frame() {
     const w = this.canvas.width, h = this.canvas.height;
     const off = document.createElement("canvas");
     off.width = w; off.height = h;
-    const octx = off.getContext("2d", { willReadFrequently: true });
-    octx.drawImage(this.video, 0, 0, w, h);
-    const face = puzzle.faces[faceIndex];
-    const T = this._transform(face);
-    const sample = (s) => {
+    const ctx = off.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(this.video, 0, 0, w, h);
+    return ctx;
+  }
+
+  // Couleur Lab médiane d'un carré de côté 2r centré en (cx, cy) : robuste aux reflets.
+  _sample(ctx, cx, cy, r) {
+    const data = ctx.getImageData(Math.round(cx - r), Math.round(cy - r), Math.round(2 * r), Math.round(2 * r)).data;
+    const ch = [[], [], []];
+    for (let i = 0; i < data.length; i += 4) { ch[0].push(data[i]); ch[1].push(data[i + 1]); ch[2].push(data[i + 2]); }
+    return rgbToLab(ch.map((a) => a.sort((x, y) => x - y)[a.length >> 1]));
+  }
+
+  // Lit l'image de la caméra : une couleur par facette de la face.
+  capture(puzzle, faceIndex) {
+    const ctx = this._frame();
+    const T = this._transform(puzzle.faces[faceIndex]);
+    const samples = {};
+    for (const s of puzzle.stickers) {
+      if (s.face !== faceIndex || s.ignored) continue;
       const pts = s.poly2d.map(T);
       const [cx, cy] = centroid(pts);
       const r = Math.max(2, 0.3 * Math.min(...pts.map(([x, y]) => Math.hypot(x - cx, y - cy))));
-      const data = octx.getImageData(Math.round(cx - r), Math.round(cy - r), Math.round(2 * r), Math.round(2 * r)).data;
-      // médiane par canal : robuste aux reflets
-      const ch = [[], [], []];
-      for (let i = 0; i < data.length; i += 4) { ch[0].push(data[i]); ch[1].push(data[i + 1]); ch[2].push(data[i + 2]); }
-      return rgbToLab(ch.map((a) => a.sort((x, y) => x - y)[a.length >> 1]));
-    };
-    // 1. le centre fixe donne la vraie couleur de la face, sous l'éclairage actuel
-    const center = this._fixedCenter(puzzle, faceIndex);
-    if (center) this.refs[puzzle.solved[center.id]] = sample(center);
-    // 2. classement des facettes avec les références à jour
+      samples[s.id] = this._sample(ctx, cx, cy, r);
+    }
+    return this.ingest(faceIndex, samples);
+  }
+
+  // Pipette : la couleur sous le doigt (ou la souris) devient la référence de la couleur `c`.
+  // Renvoie la couleur mesurée en RGB pour l'affichage, ou null hors de l'image.
+  pick(clientX, clientY, c) {
+    const rect = this.canvas.getBoundingClientRect();
+    const w = this.canvas.width, h = this.canvas.height;
+    const scale = Math.min(rect.width / w, rect.height / h);   // object-fit: contain
+    const x = (clientX - rect.left - (rect.width - w * scale) / 2) / scale;
+    const y = (clientY - rect.top - (rect.height - h * scale) / 2) / scale;
+    if (x < 0 || y < 0 || x >= w || y >= h) return null;
+    const lab = this._sample(this._frame(), x, y, Math.max(3, Math.min(w, h) / 80));
+    this.model.calibrate(c, lab);
+    return lab;
+  }
+
+  // Classe les facettes lues d'une face (séparé de `capture` pour pouvoir être testé).
+  ingest(faceIndex, samples) {
+    for (const id of Object.keys(samples)) delete this.pinned[id];   // nouvelle lecture
+    this.faces[faceIndex] = samples;
+    this.samples = samples;
     const colors = {};
-    this.samples = {};
-    for (const s of puzzle.stickers) {
-      if (s.face !== faceIndex || s.ignored) continue;
-      const lab = sample(s);
-      this.samples[s.id] = lab;
-      colors[s.id] = s === center ? puzzle.solved[s.id] : this.classify(lab);
+    for (const [id, lab] of Object.entries(samples)) {
+      colors[id] = this.model.classify(lab);
+      this.proposed[id] = colors[id];
     }
     this.result = { face: faceIndex, colors };
     return colors;
   }
 
-  classify(lab) {
-    let best = 0, bd = Infinity;
-    for (let i = 0; i < this.base.length; i++) {
-      const d = labDistance(lab, this._ref(i));
-      if (d < bd) { bd = d; best = i; }
-    }
-    return best;
-  }
-
-  // Apprentissage : la couleur validée par l'utilisateur devient (ou affine) la référence.
+  // Validation d'une face : les couleurs corrigées à la main sont conservées
+  // telles quelles par la relecture globale.
   learn(finalColors) {
     if (!this.samples) return;
-    for (const [id, lab] of Object.entries(this.samples)) {
+    for (const id of Object.keys(this.samples)) {
       const c = finalColors[id];
       if (c === undefined || c < 0) continue;
-      const ref = this.refs[c];
-      this.refs[c] = ref ? ref.map((v, k) => 0.5 * v + 0.5 * lab[k]) : lab.slice();
+      if (this.proposed[id] !== undefined && c !== this.proposed[id]) this.pinned[id] = c;
     }
   }
-}
 
-// Saturation typique d'une facette vue par une webcam, rapportée à la palette d'écran.
-const CAMERA_CHROMA = 0.55;
-
-// Distance de couleur : la luminance compte peu (exposition variable, reflets),
-// la teinte et la saturation comptent pleinement. Comparer en a/b sépare le
-// blanc (a, b proches de 0) d'un bleu pâle (b nettement négatif) même quand
-// leurs luminances se rapprochent.
-export function labDistance(p, q) {
-  return 0.2 * (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
+  // Relecture de toutes les faces capturées. Quand toutes le sont, chaque couleur
+  // reçoit exactement le nombre de facettes attendu, et les références sont
+  // recentrées sur les facettes qui leur sont attribuées (quelques itérations) :
+  // elles s'adaptent ainsi aux teintes réelles du puzzle.
+  reclassifyAll(puzzle) {
+    const known = {}, free = [], labs = {};
+    for (const samples of Object.values(this.faces)) {
+      for (const [id, lab] of Object.entries(samples)) {
+        labs[id] = lab;
+        if (this.pinned[id] !== undefined) known[id] = this.pinned[id];
+        else free.push(id);
+      }
+    }
+    const k = this.model.size;
+    const model = this.model.clone();
+    const costs = () => free.map((id) => Array.from({ length: k }, (_, c) => model.distance(labs[id], c)));
+    let assign;
+    if (this.capturedFaces() === puzzle.faces.length) {
+      const capacity = new Array(k).fill(0);
+      for (const s of puzzle.stickers) if (!s.ignored) capacity[puzzle.solved[s.id]]++;
+      for (const c of Object.values(known)) capacity[c]--;
+      if (capacity.every((x) => x >= 0)) {
+        for (let it = 0; it < 5; it++) {
+          const next = balancedAssign(costs(), capacity);
+          if (assign && next.every((c, i) => c === assign[i])) break;
+          assign = next;
+          const groups = Array.from({ length: k }, () => []);
+          free.forEach((id, i) => groups[assign[i]].push(labs[id]));
+          for (const [id, c] of Object.entries(known)) groups[c].push(labs[id]);
+          groups.forEach((g, c) => { if (g.length) model.calibrate(c, meanLab(g)); });
+        }
+      }
+    }
+    if (!assign) assign = costs().map((row) => row.indexOf(Math.min(...row)));
+    const colors = { ...known };
+    free.forEach((id, i) => { colors[id] = assign[i]; this.proposed[id] = assign[i]; });
+    this.result = null;
+    return colors;
+  }
 }
 
 function centroid(pts) {
   const n = pts.length;
   return pts.reduce((a, [x, y]) => [a[0] + x / n, a[1] + y / n], [0, 0]);
-}
-
-function hexToRgb(hex) {
-  const v = parseInt(hex.slice(1), 16);
-  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-}
-
-function rgbToLab([r, g, b]) {
-  const lin = (c) => { c /= 255; return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92; };
-  const R = lin(r), G = lin(g), B = lin(b);
-  let x = (R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047;
-  let y = R * 0.2126 + G * 0.7152 + B * 0.0722;
-  let z = (R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883;
-  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
-  x = f(x); y = f(y); z = f(z);
-  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
 }

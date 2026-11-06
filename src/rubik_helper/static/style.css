@@ -224,3 +224,9 @@ textarea { width: 100%; font-family: ui-monospace, "SF Mono", Consolas, monospac
 .seq-moves { display: flex; gap: 3px; }
 .seq-moves .mv { background: var(--panel); cursor: default; }
 .seq-moves .mv.now { background: var(--accent); color: var(--accent-text); }
+
+.calib { margin-top: 12px; font-size: 13px; }
+.calib summary { cursor: pointer; color: var(--muted); }
+.calib .palette { margin-top: 6px; }
+.swatch .dot.unset { border-style: dashed; opacity: .45; }
+.cam-wrap.picking canvas { cursor: crosshair; }

@@ -66,10 +66,13 @@ brièvement l'onglet le temps de bâtir sa bibliothèque (instantané pour le 3x
    - **Peindre** : choisir une couleur, cliquer sur les facettes du patron ou de la vue 3D
      (Maj + clic remplit une face). Les compteurs signalent une couleur en trop.
    - **Caméra** : présenter chaque face selon le gabarit affiché (la face indiquée en haut),
-     capturer, corriger si besoin, valider. Sur les puzzles à centre fixe (3x3, 5x5, Megaminx…),
-     le centre de chaque face capturée sert d'étalon pour sa couleur, sous l'éclairage du moment ;
-     commencer par la face blanche corrige aussi la dominante de la lumière pour les couleurs
-     pas encore vues. La reconnaissance s'affine ensuite au fil des faces validées.
+     capturer, corriger si besoin, valider. Une fois toutes les faces capturées,
+     **Relire toutes les faces** reclasse l'ensemble en imposant le bon nombre de facettes par
+     couleur, et ajuste les couleurs de référence aux teintes réelles du puzzle.
+     Les teintes variant d'un fabricant à l'autre, l'**étalonnage à la pipette** (sous l'image
+     de la caméra) est recommandé pour le Megaminx et les puzzles à 12 couleurs : choisir une
+     couleur, toucher une facette de cette couleur sur l'image, et ainsi de suite. L'étalonnage
+     est conservé par famille de puzzle (cubes, Megaminx, Pyraminx) et par appareil.
      Le navigateur n'autorise la caméra que sur `localhost` ou en https.
    - **Formule** : coller un mélange (notation WCA) ou générer un mélange aléatoire.
 3. Cliquer sur **Résoudre**. Une saisie incohérente est signalée avec les facettes fautives
@@ -168,10 +171,10 @@ environ 200, Master Kilominx environ 535, Gigaminx environ 790. C'est long par r
 - **Sens des mouvements `R++` / `D++`** : `R++` tourne tout sauf la couche DBL, `D++` tout sauf
   la couche U, de 2/5 de tour dans le sens horaire vu de R (ou de D). Cette convention reste à
   confirmer avec un mélange officiel avant de s'y fier.
-- **Caméra** : la lecture des 12 couleurs d'un Megaminx (vert clair et vert foncé, crème et jaune)
-  est fragile ; une vérification sur le patron reste nécessaire. Sans centre fixe (4x4, Pyraminx…),
-  la première face lue sous une lumière chaude peut encore confondre bleu pâle et blanc : corriger
-  puis valider, la couleur corrigée sert alors de référence.
+- **Caméra** : sans étalonnage, la lecture des 12 couleurs d'un Megaminx (vert clair et vert
+  foncé, crème, blanc et gris) reste fragile face par face ; étalonner à la pipette, puis relire
+  toutes les faces. Un étalonnage fait sous un éclairage donné est moins fiable sous un autre :
+  le refaire si la lumière change nettement. Une vérification sur le patron reste conseillée.
 - Les puzzles sans centre fixe (4x4, 6x6, Master Kilominx) déduisent le schéma de couleurs à partir
   des coins ; tous les coins doivent donc être saisis.
 
@@ -194,3 +197,9 @@ uv run pytest -q -m "not slow"
 - `src/rubik_helper/webglue.py` : pont navigateur (Pyodide), renvoie du JSON.
 - `src/rubik_helper/static/` : interface (Three.js embarqué, fonctionne hors ligne).
 - `web/` : `boot.js` (chargeur Pyodide) et `build.py` (assemble le site GitHub Pages).
+
+
+
+## a prevoir
+recup la liste des couleurs du puzzle et les mettre dans un tableau pour la saisie par couleur
+chaque constructeur a un lot de couleur dedier, si on recup cela on peu afiner la selection de la couleurs

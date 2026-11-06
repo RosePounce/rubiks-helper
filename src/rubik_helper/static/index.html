@@ -52,9 +52,22 @@
           <button id="cam-start" class="secondary">Activer la caméra</button>
           <button id="cam-capture" disabled>Capturer</button>
           <button id="cam-accept" class="secondary" disabled>Valider la face</button>
+          <button id="cam-reread" class="secondary" disabled>Relire toutes les faces</button>
         </div>
         <p class="hint small">Après capture, corrigez les erreurs éventuelles en peignant sur le patron avant de valider.
-          La lecture s'améliore au fil des faces validées.</p>
+          Quand toutes les faces sont capturées, la relecture globale répartit les couleurs en tenant compte
+          du nombre de facettes de chaque couleur.</p>
+
+        <details class="calib" id="cam-calib">
+          <summary>Étalonnage des couleurs (pipette)</summary>
+          <p class="hint small">Les teintes varient selon le fabricant. Choisissez une couleur ci-dessous, puis touchez
+            une facette de cette couleur sur l'image de la caméra. L'étalonnage est conservé pour ce type de puzzle
+            sur cet appareil.</p>
+          <div id="calib-grid" class="palette"></div>
+          <div class="row">
+            <button id="calib-reset" class="secondary">Effacer l'étalonnage</button>
+          </div>
+        </details>
       </div>
 
       <div class="tab-body hidden" id="tab-formula">
