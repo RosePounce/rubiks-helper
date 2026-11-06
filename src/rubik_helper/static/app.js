@@ -18,6 +18,9 @@ const app = {
   playing: false,
   busy: false,
   pick: null,         // couleur en cours d'étalonnage à la pipette
+  catalog: [],        // liste des puzzles { id, label }
+  saveId: null,       // sauvegarde active, mise à jour automatiquement
+  restoring: false,   // reprise d'une sauvegarde en cours (pas d'enregistrement auto)
 };
 
 const viewer = new Viewer($("viewer"), (id, e) => paint(id, e));
@@ -53,6 +56,7 @@ function render() {
   viewer.setColors(app.colors, app.puzzle.palette);
   net.setColors(app.colors, app.puzzle.palette);
   updateCounts();
+  scheduleAutosave();
 }
 
 function speedMs() {
@@ -75,11 +79,12 @@ function applyInverse(colors, perm) {
 // --------------------------------------------------------------- chargement
 async function loadPuzzleList() {
   const list = await api("/api/puzzles");
+  app.catalog = list;
   const sel = $("puzzle");
   sel.innerHTML = list.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
   const saved = safeGet("puzzle");
   if (saved && list.some((p) => p.id === saved)) sel.value = saved;
-  sel.addEventListener("change", () => loadPuzzle(sel.value));
+  sel.addEventListener("change", () => { detachSave(); loadPuzzle(sel.value); });
   await loadPuzzle(sel.value);
 }
 
@@ -684,6 +689,7 @@ function updatePlayer() {
   $("pl-next").disabled = done;
   $("pl-step").disabled = done;
   $("pl-end").disabled = done;
+  scheduleAutosave();
 }
 
 async function stepForward(animate = true) {
@@ -760,7 +766,7 @@ function clearSolution() {
 $("btn-reset-view").addEventListener("click", () => viewer.resetView());
 
 document.addEventListener("keydown", (e) => {
-  if (!app.plan || ["TEXTAREA", "INPUT", "SELECT"].includes(document.activeElement?.tagName)) return;
+  if (!app.plan || $("saves").open || ["TEXTAREA", "INPUT", "SELECT"].includes(document.activeElement?.tagName)) return;
   if (e.key === "ArrowRight") { e.preventDefault(); $("pl-next").click(); }
   if (e.key === "ArrowLeft") { e.preventDefault(); $("pl-prev").click(); }
   if (e.key === " ") { e.preventDefault(); $("pl-play").click(); }
@@ -877,6 +883,276 @@ async function demo(ex, btn) {
   }
 }
 
+// --------------------------------------------------------------- sauvegardes
+// Une sauvegarde contient l'état saisi, la solution calculée et la position
+// dans le lecteur : on peut résoudre un gros puzzle en plusieurs fois sans
+// recalculer. La sauvegarde active est mise à jour à chaque changement.
+const SAVE_FORMAT = "rubik-helper-save";
+let autosaveTimer = null;
+
+function readSaves() {
+  try {
+    const list = JSON.parse(safeGet("saves") || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+function writeSaves(list) {
+  try {
+    localStorage.setItem("rubik-helper:saves", JSON.stringify(list));
+    return true;
+  } catch {
+    notify("Enregistrement impossible : stockage du navigateur plein ou indisponible.", "error");
+    return false;
+  }
+}
+
+// message visible même quand la fenêtre des sauvegardes couvre la page
+function notify(text, kind = "info") {
+  const el = $("saves-msg");
+  if ($("saves").open) {
+    el.className = `message ${kind}`;
+    el.textContent = text;
+  } else {
+    message(text, kind);
+  }
+}
+
+function snapshot() {
+  const withSol = !!(app.solution && app.plan);
+  return {
+    puzzle: app.puzzle.id,
+    puzzleLabel: app.catalog.find((p) => p.id === app.puzzle.id)?.label || app.puzzle.id,
+    colors: app.colors.slice(),
+    start: withSol ? app.start.slice() : null,
+    solution: withSol ? app.solution : null,
+    mode: app.mode,
+    pos: withSol ? app.pos : 0,
+    withDefects: withSol ? !!app.withDefects : false,
+    updated: Date.now(),
+  };
+}
+
+function scheduleAutosave() {
+  if (!app.saveId || app.restoring) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(flushAutosave, 400);
+}
+
+function flushAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  if (!app.saveId || app.restoring || !app.puzzle) return;
+  const list = readSaves();
+  const i = list.findIndex((x) => x.id === app.saveId);
+  if (i < 0) { detachSave(); return; }   // supprimée entre-temps
+  list[i] = { ...list[i], ...snapshot() };
+  writeSaves(list);
+}
+
+function detachSave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  app.saveId = null;
+  updateSaveBadge();
+}
+
+function updateSaveBadge() {
+  const el = $("save-active");
+  const s = app.saveId && readSaves().find((x) => x.id === app.saveId);
+  safeSet("activeSave", s ? s.id : "");
+  el.classList.toggle("hidden", !s);
+  el.innerHTML = s ? `Sauvegarde : <strong>${escapeHtml(s.name)}</strong>` : "";
+}
+
+function solutionMoves(sol, mode) {
+  if (mode === "short" && sol.short) return sol.short.moves;
+  return sol.stages.flatMap((sg) => sg.steps.flatMap((sp) => sp.moves));
+}
+
+function saveProgress(s) {
+  if (!s.solution) return "saisie en cours, pas encore résolu";
+  const total = solutionMoves(s.solution, s.mode).length;
+  if (s.pos >= total) return `solution terminée (${total} coups)`;
+  return `coup ${s.pos} sur ${total} (${Math.floor((100 * s.pos) / total)} %)`;
+}
+
+function formatDate(t) {
+  return new Date(t).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function defaultSaveName() {
+  const label = app.catalog.find((p) => p.id === app.puzzle.id)?.label || app.puzzle.id;
+  return `${label.replace(/\s*\(.*\)$/, "")} - ${formatDate(Date.now())}`;
+}
+
+function newSaveId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function renderSaves() {
+  const list = readSaves().sort((a, b) => b.updated - a.updated);
+  $("save-new").textContent = app.saveId ? "Enregistrer une copie" : "Enregistrer";
+  const el = $("saves-list");
+  if (!list.length) {
+    el.innerHTML = `<p class="hint">Aucune sauvegarde pour l'instant.</p>`;
+    return;
+  }
+  el.innerHTML = list.map((s) => `
+    <div class="save-item${s.id === app.saveId ? " active" : ""}" data-id="${escapeHtml(s.id)}">
+      <div class="save-info">
+        <div class="name">${escapeHtml(s.name)}${s.id === app.saveId ? " (active)" : ""}</div>
+        <div class="meta">${escapeHtml(s.puzzleLabel || s.puzzle)}, ${escapeHtml(saveProgress(s))}<br>
+          Modifiée le ${escapeHtml(formatDate(s.updated))}</div>
+      </div>
+      <div class="actions">
+        <button class="small" data-act="load">Reprendre</button>
+        <button class="secondary small" data-act="rename">Renommer</button>
+        <button class="secondary small" data-act="export">Exporter</button>
+        <button class="secondary small danger" data-act="delete">Supprimer</button>
+      </div>
+    </div>`).join("");
+  el.querySelectorAll(".save-item").forEach((d) => {
+    const id = d.dataset.id;
+    d.querySelectorAll("button[data-act]").forEach((b) => b.addEventListener("click", () => saveAction(b, id)));
+  });
+}
+
+function saveAction(btn, id) {
+  const list = readSaves();
+  const s = list.find((x) => x.id === id);
+  if (!s) { renderSaves(); return; }
+  const act = btn.dataset.act;
+  if (act === "load") {
+    $("saves").close();
+    restoreSave(s);
+  } else if (act === "rename") {
+    const name = $("save-name").value.trim();
+    if (!name) { notify("Saisissez le nouveau nom dans le champ ci-dessus, puis cliquez sur « Renommer ».", "info"); $("save-name").focus(); return; }
+    s.name = name;
+    if (writeSaves(list)) { $("save-name").value = ""; renderSaves(); updateSaveBadge(); notify(`Renommée en « ${name} ».`, "ok"); }
+  } else if (act === "export") {
+    const blob = new Blob([JSON.stringify({ format: SAVE_FORMAT, version: 1, save: s })], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${s.name.replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "") || "sauvegarde"}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } else if (act === "delete") {
+    // double clic de confirmation, sans boîte de dialogue du navigateur
+    if (btn.dataset.confirm !== "1") {
+      btn.dataset.confirm = "1";
+      btn.textContent = "Confirmer la suppression";
+      setTimeout(() => { if (btn.isConnected) { btn.dataset.confirm = ""; btn.textContent = "Supprimer"; } }, 4000);
+      return;
+    }
+    if (writeSaves(list.filter((x) => x.id !== id))) {
+      if (app.saveId === id) detachSave();
+      renderSaves();
+    }
+  }
+}
+
+async function restoreSave(s) {
+  if (app.busy) { message("Attendez la fin de l'animation en cours avant de reprendre une sauvegarde.", "info"); return; }
+  if (!app.catalog.some((p) => p.id === s.puzzle)) { message(`Puzzle inconnu dans cette sauvegarde : ${s.puzzle}.`, "error"); return; }
+  detachSave();
+  app.restoring = true;
+  let partial = false;
+  try {
+    if (app.rtab !== "solution") document.querySelector('.tab[data-rtab="solution"]').click();
+    $("puzzle").value = s.puzzle;
+    if (app.puzzle?.id !== s.puzzle) await loadPuzzle(s.puzzle);
+    else clearSolution();
+    const n = app.puzzle.stickers.length;
+    if (!Array.isArray(s.colors) || s.colors.length !== n) throw new Error("Sauvegarde incompatible avec ce puzzle.");
+    viewer.setErrors([]); net.setErrors([]);
+    const sol = s.solution;
+    const mode = sol?.short && s.mode === "short" ? "short" : "guide";
+    const usable = sol && Array.isArray(s.start) && s.start.length === n
+      && solutionMoves(sol, mode).every((m) => app.moveIndex[m]);
+    if (usable) {
+      app.solution = sol;
+      app.start = s.start.slice();
+      app.colors = s.start.slice();
+      app.withDefects = !!s.withDefects;
+      app.mode = mode;
+      showSolution();
+      seek(Math.max(0, Math.min(Number(s.pos) || 0, app.plan.moves.length)));
+    } else {
+      partial = !!sol;
+      app.colors = s.colors.slice();
+      render();
+    }
+  } catch (err) {
+    app.restoring = false;
+    message(`Reprise impossible : ${err.message}`, "error");
+    return;
+  }
+  app.restoring = false;
+  app.saveId = s.id;
+  updateSaveBadge();
+  message(partial
+    ? `« ${s.name} » reprise, sans sa solution (devenue incompatible) : relancez la résolution.`
+    : app.plan
+      ? `« ${s.name} » reprise au coup ${app.pos} sur ${app.plan.moves.length}. La progression est enregistrée automatiquement.`
+      : `« ${s.name} » reprise. Les modifications sont enregistrées automatiquement.`, partial ? "info" : "ok");
+}
+
+$("btn-saves").addEventListener("click", () => {
+  if (!app.puzzle) return;
+  $("save-name").value = "";
+  $("save-name").placeholder = defaultSaveName();
+  $("saves-msg").className = "message hidden";
+  renderSaves();
+  $("saves").showModal();
+});
+
+$("saves-close").addEventListener("click", () => $("saves").close());
+
+$("save-new").addEventListener("click", () => {
+  if (!app.puzzle) return;
+  const s = { id: newSaveId(), name: $("save-name").value.trim() || defaultSaveName(), created: Date.now(), ...snapshot() };
+  const list = readSaves();
+  list.push(s);
+  if (!writeSaves(list)) return;
+  app.saveId = s.id;
+  updateSaveBadge();
+  $("save-name").value = "";
+  $("save-name").placeholder = defaultSaveName();
+  renderSaves();
+  notify(`Sauvegarde « ${s.name} » créée. Elle se met à jour automatiquement.`, "ok");
+});
+
+$("save-name").addEventListener("keydown", (e) => { if (e.key === "Enter") $("save-new").click(); });
+
+$("save-import").addEventListener("click", () => $("save-file").click());
+
+$("save-file").addEventListener("change", async () => {
+  const file = $("save-file").files[0];
+  $("save-file").value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const items = data?.format === SAVE_FORMAT ? [data.save] : [];
+    const ok = items.filter((s) => s && typeof s.puzzle === "string" && Array.isArray(s.colors)
+      && app.catalog.some((p) => p.id === s.puzzle));
+    if (!ok.length) throw new Error("ce fichier n'est pas une sauvegarde Rubik Helper valide.");
+    const list = readSaves();
+    for (const s of ok) {
+      list.push({ ...s, id: newSaveId(), name: String(s.name || "Sauvegarde importée"),
+        pos: Number(s.pos) || 0, updated: Number(s.updated) || Date.now() });
+    }
+    if (writeSaves(list)) { renderSaves(); notify(`Sauvegarde « ${ok[0].name || "importée"} » importée.`, "ok"); }
+  } catch (err) {
+    notify(`Import impossible : ${err.message}`, "error");
+  }
+});
+
+// enregistre la dernière position avant de quitter la page
+window.addEventListener("pagehide", () => { if (autosaveTimer) flushAutosave(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && autosaveTimer) flushAutosave(); });
+
 // -------------------------------------------------------------------- divers
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -884,4 +1160,11 @@ function escapeHtml(s) {
 function safeGet(k) { try { return localStorage.getItem(`rubik-helper:${k}`); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(`rubik-helper:${k}`, v); } catch { /* stockage indisponible */ } }
 
-loadPuzzleList().catch((err) => message(`Chargement impossible : ${err.message}`, "error"));
+// au démarrage : liste des puzzles, puis reprise de la sauvegarde active éventuelle
+loadPuzzleList()
+  .then(() => {
+    const id = safeGet("activeSave");
+    const s = id && readSaves().find((x) => x.id === id);
+    if (s) return restoreSave(s);
+  })
+  .catch((err) => message(`Chargement impossible : ${err.message}`, "error"));

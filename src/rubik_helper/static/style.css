@@ -230,3 +230,30 @@ textarea { width: 100%; font-family: ui-monospace, "SF Mono", Consolas, monospac
 .calib .palette { margin-top: 6px; }
 .swatch .dot.unset { border-style: dashed; opacity: .45; }
 .cam-wrap.picking canvas { cursor: crosshair; }
+
+.save-active { color: var(--muted); font-size: 13px; }
+.save-active strong { color: var(--text); font-weight: 600; }
+.saves {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+}
+.saves::backdrop { background: rgba(0, 0, 0, .4); }
+.saves-head { display: flex; align-items: center; justify-content: space-between; }
+.saves-head h2 { margin: 0; }
+.save-name {
+  flex: 1; min-width: 180px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+}
+.saves-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.save-item {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+}
+.save-item.active { border-color: var(--accent); background: var(--accent-soft); }
+.save-info { flex: 1; min-width: 200px; }
+.save-info .name { font-weight: 600; }
+.save-info .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.save-item .actions { display: flex; gap: 6px; }
+.save-item .danger { color: var(--danger); }

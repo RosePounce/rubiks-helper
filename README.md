@@ -80,6 +80,22 @@ brièvement l'onglet le temps de bâtir sa bibliothèque (instantané pour le 3x
 4. Suivre la solution avec le lecteur (flèches gauche/droite, espace). Chaque étape montre
    les coups à jouer, les pièces concernées en surbrillance et ce qu'elle dérange au passage.
 
+## Sauvegardes
+
+Pour résoudre un gros puzzle (Gigaminx, 7x7...) en plusieurs fois : bouton **Sauvegardes** en
+haut à droite, puis **Enregistrer**. Une sauvegarde contient l'état saisi, la solution calculée
+(rien n'est recalculé à la reprise) et la position dans le lecteur.
+
+- La sauvegarde active (affichée dans la barre du haut) se met à jour toute seule à chaque coup
+  et à chaque modification de la saisie. Elle est rouverte automatiquement au chargement de la page.
+- Changer de puzzle dans la liste détache la sauvegarde active, sans la modifier.
+- **Reprendre** recharge une sauvegarde ; **Renommer** utilise le nom saisi dans le champ ;
+  **Supprimer** demande un second clic de confirmation.
+- Les sauvegardes sont stockées dans le navigateur (`localStorage`), propres à l'appareil.
+  **Exporter** produit un fichier `.json` à charger avec **Importer un fichier** sur un autre appareil.
+- Une solution Gigaminx pèse environ 40 Ko : le stockage du navigateur (environ 5 Mo) en contient
+  une centaine.
+
 ## Aide-mémoire
 
 L'onglet **Aide-mémoire** (à côté de Solution) donne, pour le puzzle choisi, les séquences à

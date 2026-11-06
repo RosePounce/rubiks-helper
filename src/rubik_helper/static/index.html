@@ -17,7 +17,30 @@
       <select id="puzzle"></select>
     </label>
     <span id="status" class="status"></span>
+    <span id="save-active" class="save-active hidden"></span>
+    <button id="btn-saves" class="secondary small">Sauvegardes</button>
   </header>
+
+  <dialog id="saves" class="saves">
+    <div class="saves-head">
+      <h2>Sauvegardes</h2>
+      <button id="saves-close" class="secondary small">Fermer</button>
+    </div>
+    <p class="hint small">Une sauvegarde garde l'état saisi, la solution calculée et l'endroit où vous en êtes
+      dans le lecteur. Une fois enregistrée ou reprise, elle se met à jour toute seule à chaque coup : vous pouvez
+      fermer l'onglet et reprendre plus tard. Les sauvegardes restent dans ce navigateur, sur cet appareil ;
+      « Exporter » produit un fichier à importer sur un autre appareil.</p>
+    <div class="row">
+      <input id="save-name" type="text" class="save-name" placeholder="Nom de la sauvegarde">
+      <button id="save-new">Enregistrer</button>
+    </div>
+    <div id="saves-msg" class="message hidden"></div>
+    <div id="saves-list" class="saves-list"></div>
+    <div class="row">
+      <button id="save-import" class="secondary small">Importer un fichier</button>
+      <input id="save-file" type="file" accept=".json,application/json" class="hidden">
+    </div>
+  </dialog>
 
   <main class="layout">
     <!-- Saisie -->
