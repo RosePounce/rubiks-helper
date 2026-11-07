@@ -2,6 +2,9 @@
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
 
+const LONG_PRESS_MS = 450;  // appui long : remplit la face, comme Maj + clic
+const MOVE_SLOP = 8;        // déplacement toléré avant de parler de glissement
+
 const UNKNOWN = 0x5b6170;
 const IGNORED = 0x26282c;
 
@@ -12,7 +15,8 @@ export class Viewer {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    // plafonné à 2 : au-delà (téléphones à 3x/4x) le coût GPU double sans gain visible
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     container.appendChild(this.renderer.domElement);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enablePan = false;
@@ -177,18 +181,52 @@ export class Viewer {
 
   _bindPicking() {
     const el = this.renderer.domElement;
-    let down = null;
-    el.addEventListener("pointerdown", (e) => { down = [e.clientX, e.clientY]; });
+    let down = null;      // position du pointeur enfoncé
+    let timer = null;     // appui long en cours
+    let handled = false;  // l'appui long a déjà peint : ignorer le relâchement
+
+    const cancel = () => { clearTimeout(timer); timer = null; };
+
+    const hitAt = (x, y) => {
+      const rect = el.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1,
+        -((y - rect.top) / rect.height) * 2 + 1);
+      this.raycaster.setFromCamera(ndc, this.camera);
+      return this.raycaster.intersectObjects(this.meshes, false)[0];
+    };
+
+    el.addEventListener("pointerdown", (e) => {
+      down = [e.clientX, e.clientY];
+      handled = false;
+      cancel();
+      if (!this.onPick) return;
+      // appui long : équivalent tactile de Maj + clic (remplir toute la face)
+      timer = setTimeout(() => {
+        timer = null;
+        const hit = hitAt(e.clientX, e.clientY);
+        if (!hit) return;
+        handled = true;
+        navigator.vibrate?.(12);
+        this.onPick(hit.object.userData.id, { shiftKey: true });
+      }, LONG_PRESS_MS);
+    });
+
+    el.addEventListener("pointermove", (e) => {
+      if (!down) return;
+      if (Math.hypot(e.clientX - down[0], e.clientY - down[1]) > MOVE_SLOP) cancel();
+    });
+
+    for (const ev of ["pointercancel", "pointerleave"]) {
+      el.addEventListener(ev, () => { cancel(); down = null; });
+    }
+
     el.addEventListener("pointerup", (e) => {
+      cancel();
       if (!down) return;
       const moved = Math.hypot(e.clientX - down[0], e.clientY - down[1]);
       down = null;
-      if (moved > 5 || !this.onPick) return;
-      const rect = el.getBoundingClientRect();
-      const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1);
-      this.raycaster.setFromCamera(ndc, this.camera);
-      const hit = this.raycaster.intersectObjects(this.meshes, false)[0];
+      if (handled || moved > MOVE_SLOP || !this.onPick) return;
+      const hit = hitAt(e.clientX, e.clientY);
       if (hit) this.onPick(hit.object.userData.id, e);
     });
   }

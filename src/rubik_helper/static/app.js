@@ -191,6 +191,7 @@ $("btn-clear").addEventListener("click", () => {
 document.querySelectorAll(".tab[data-tab]").forEach((t) => t.addEventListener("click", () => {
   document.querySelectorAll(".tab[data-tab]").forEach((x) => x.classList.toggle("active", x === t));
   for (const name of ["paint", "camera", "formula"]) $(`tab-${name}`).classList.toggle("hidden", t.dataset.tab !== name);
+  syncViewForTab(t.dataset.tab);
   if (t.dataset.tab !== "camera" && scanner.active) {
     scanner.stop();
     $("cam-capture").disabled = true;
@@ -764,6 +765,36 @@ function clearSolution() {
 }
 
 $("btn-reset-view").addEventListener("click", () => viewer.resetView());
+
+// Sur téléphone la vue 3D est collée en haut de l'écran : ce bouton la replie
+// pour rendre la hauteur à la saisie ou aux étapes de la solution.
+const narrowScreen = window.matchMedia("(max-width: 820px)");
+let viewAutoCollapsed = false;  // repli décidé par l'appli, à défaire tout seul
+
+function setViewCollapsed(collapsed) {
+  document.body.classList.toggle("view-collapsed", collapsed);
+  const btn = $("btn-toggle-view");
+  btn.textContent = collapsed ? "Afficher la vue 3D" : "Réduire";
+  btn.setAttribute("aria-expanded", String(!collapsed));
+}
+
+$("btn-toggle-view").addEventListener("click", () => {
+  viewAutoCollapsed = false;
+  setViewCollapsed(!document.body.classList.contains("view-collapsed"));
+});
+
+// Sur petit écran, la caméra a besoin de toute la hauteur : on replie la vue 3D
+// en entrant dans l'onglet et on la redonne en sortant, sauf repli manuel.
+function syncViewForTab(tab) {
+  if (!narrowScreen.matches) return;
+  if (tab === "camera" && !document.body.classList.contains("view-collapsed")) {
+    viewAutoCollapsed = true;
+    setViewCollapsed(true);
+  } else if (tab !== "camera" && viewAutoCollapsed) {
+    viewAutoCollapsed = false;
+    setViewCollapsed(false);
+  }
+}
 
 document.addEventListener("keydown", (e) => {
   if (!app.plan || $("saves").open || ["TEXTAREA", "INPUT", "SELECT"].includes(document.activeElement?.tagName)) return;

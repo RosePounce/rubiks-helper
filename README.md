@@ -34,6 +34,11 @@ adresses à ouvrir sur le téléphone, par exemple `https://192.168.1.20:8000`.
   - Manjaro (firewalld, s'il est actif) : `sudo firewall-cmd --add-port=8000/tcp --permanent && sudo firewall-cmd --reload`
   - Windows : accepter la fenêtre du pare-feu au premier lancement (réseau privé).
 
+Sur un écran étroit, l'interface passe en une colonne : la vue 3D se place en haut et y reste
+pendant qu'on fait défiler la saisie ou les étapes de la solution. Le bouton **Réduire**, sous
+la vue, la replie pour rendre la hauteur au reste de la page ; elle se replie d'elle-même en
+entrant dans l'onglet Caméra.
+
 Au premier lancement, les bibliothèques de commutateurs sont calculées en arrière-plan,
 puis mises en cache dans `~/.cache/rubik-helper/` (variable `RUBIK_HELPER_CACHE` pour changer
 d'emplacement). Comptez de quelques secondes pour un cube à environ 45 s pour le Gigaminx ou
@@ -64,7 +69,7 @@ brièvement l'onglet le temps de bâtir sa bibliothèque (instantané pour le 3x
 1. Choisir le puzzle.
 2. Saisir l'état mélangé, au choix :
    - **Peindre** : choisir une couleur, cliquer sur les facettes du patron ou de la vue 3D
-     (Maj + clic remplit une face). Les compteurs signalent une couleur en trop.
+     (Maj + clic, ou appui long au doigt, remplit une face). Les compteurs signalent une couleur en trop.
    - **Caméra** : présenter chaque face selon le gabarit affiché (la face indiquée en haut),
      capturer, corriger si besoin, valider. Une fois toutes les faces capturées,
      **Relire toutes les faces** reclasse l'ensemble en imposant le bon nombre de facettes par

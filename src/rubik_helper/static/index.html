@@ -2,7 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1d2026" media="(prefers-color-scheme: dark)">
   <title>Rubik Helper</title>
   <link rel="stylesheet" href="/static/style.css">
   <script type="importmap">
@@ -53,7 +56,7 @@
 
       <div class="tab-body" id="tab-paint">
         <p class="hint">Choisissez une couleur puis cliquez sur les facettes, dans le patron ou sur la vue 3D.
-          Maj + clic remplit toute la face.</p>
+          Maj + clic (ou appui long au doigt) remplit toute la face.</p>
         <div id="palette" class="palette"></div>
         <div class="row">
           <button id="btn-solved" class="secondary">État résolu</button>
@@ -124,7 +127,8 @@
       <div id="viewer" class="viewer"></div>
       <div class="view-tools">
         <button id="btn-reset-view" class="secondary small">Recentrer la vue</button>
-        <span class="hint small">Glisser pour tourner, molette pour zoomer.</span>
+        <button id="btn-toggle-view" class="secondary small view-toggle" aria-expanded="true">Réduire</button>
+        <span class="hint small">Glisser pour tourner, molette ou pincement pour zoomer.</span>
       </div>
     </section>
 

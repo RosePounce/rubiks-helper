@@ -1,10 +1,37 @@
 // Patron 2D cliquable (SVG), construit à partir des coordonnées dépliées.
 const SVG = "http://www.w3.org/2000/svg";
 
+const LONG_PRESS_MS = 450;  // appui long : remplit la face, comme Maj + clic
+const MOVE_SLOP = 8;        // déplacement toléré avant de parler de glissement
+
 export class Net {
   constructor(container, onPick) {
     this.container = container;
     this.onPick = onPick;
+    this._press = { timer: null, at: null, handled: false };
+  }
+
+  // Appui long sur une facette : équivalent tactile de Maj + clic (remplir la face).
+  _bindLongPress(poly, sticker) {
+    const press = this._press;
+    const cancel = () => { clearTimeout(press.timer); press.timer = null; };
+    poly.addEventListener("pointerdown", (e) => {
+      press.at = [e.clientX, e.clientY];
+      press.handled = false;
+      cancel();
+      press.timer = setTimeout(() => {
+        press.timer = null;
+        press.handled = true;
+        navigator.vibrate?.(12);
+        this.onPick(sticker.id, { shiftKey: true });
+      }, LONG_PRESS_MS);
+    });
+    poly.addEventListener("pointermove", (e) => {
+      if (press.at && Math.hypot(e.clientX - press.at[0], e.clientY - press.at[1]) > MOVE_SLOP) cancel();
+    });
+    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) {
+      poly.addEventListener(ev, cancel);
+    }
   }
 
   load(puzzle) {
@@ -26,7 +53,10 @@ export class Net {
       const p = document.createElementNS(SVG, "polygon");
       p.setAttribute("points", s.net.map(([x, y]) => `${x},${-y}`).join(" "));
       if (s.ignored) p.classList.add("ignored");
-      p.addEventListener("click", (e) => { if (!s.ignored) this.onPick(s.id, e); });
+      if (!s.ignored) {
+        p.addEventListener("click", (e) => { if (!this._press.handled) this.onPick(s.id, e); });
+        this._bindLongPress(p, s);
+      }
       svg.appendChild(p);
       this.polys.push(p);
       const c = s.net.reduce((a, [x, y]) => [a[0] + x / s.net.length, a[1] + y / s.net.length], [0, 0]);
@@ -44,6 +74,8 @@ export class Net {
       t.style.fill = "rgba(0,0,0,.55)";
       svg.appendChild(t);
     });
+    svg.style.touchAction = "manipulation";
+    svg.addEventListener("contextmenu", (e) => e.preventDefault());
     this.container.appendChild(svg);
   }
 
